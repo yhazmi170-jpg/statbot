@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { mkdirSync } from 'fs';
 import { config } from './config.js';
 import { prisma, log, ensureGuild } from './database/index.js';
 import { onMessageCreate, flushMessages } from './collectors/messages.js';
@@ -6,6 +7,9 @@ import { onVoiceStateUpdate, flushVoiceSessions } from './collectors/voice.js';
 import { onGuildMemberAdd, onGuildMemberRemove } from './collectors/members.js';
 import { handleCommand, getCommands } from './commands/index.js';
 import { startReportService } from './services/reports.js';
+
+// Ensure data directory exists for SQLite
+try { mkdirSync('./data', { recursive: true }); } catch {}
 
 const client = new Client({
   intents: [
