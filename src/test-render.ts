@@ -8,6 +8,10 @@ import { renderServerOverview } from './rendering/server-overview.js';
 import { renderGrowth } from './rendering/growth.js';
 import { renderCompare } from './rendering/compare.js';
 import { renderWeeklyReport } from './rendering/reports.js';
+import { renderFakeServerStats } from './rendering/fake-server.js';
+import { renderFakeUserStats } from './rendering/fake-user.js';
+import { renderFakeReport } from './rendering/fake-report.js';
+import { generateFakeServer, generateFakeUser, generateFakeReport } from './fake/generator.js';
 import { writeFileSync } from 'fs';
 
 async function main() {
@@ -166,6 +170,23 @@ async function main() {
     dailyMessages: Array.from({ length: 7 }, () => Math.floor(2200 + Math.random() * 800)),
     hourlyByDay, prevMessages: 16200,
   }));
+
+  // === FAKE DEMO IMAGES ===
+  console.log('m?fake (server)...');
+  const fakeServer = generateFakeServer();
+  writeFileSync('/tmp/test-fake-server.png', await renderFakeServerStats(fakeServer));
+
+  console.log('m?fake user...');
+  const fakeUser = generateFakeUser();
+  writeFileSync('/tmp/test-fake-user.png', await renderFakeUserStats(fakeUser));
+
+  console.log('m?fake weekly...');
+  const fakeWeekly = generateFakeReport('weekly');
+  writeFileSync('/tmp/test-fake-weekly.png', await renderFakeReport(fakeWeekly));
+
+  console.log('m?fake monthly...');
+  const fakeMonthly = generateFakeReport('monthly');
+  writeFileSync('/tmp/test-fake-monthly.png', await renderFakeReport(fakeMonthly));
 
   console.log('Done!');
 }

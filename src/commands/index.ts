@@ -67,7 +67,7 @@ registerCommand({
   name: 'stats',
   description: 'Server statistics overview',
   category: 'Analytics',
-  aliases: ['svstats'],
+  aliases: ['svstats', 'top'],
   execute: async ({ msg }) => {
     const [guildStats, hourlyByDay] = await Promise.all([
       queries.getServerStats(msg.guild!.id),
@@ -517,6 +517,63 @@ registerCommand({
       prevMessages: prevStats.totalMessages,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'monthly.png' })] });
+  },
+});
+
+// === FAKE ===
+import { generateFakeServer, generateFakeUser, generateFakeReport } from '../fake/generator.js';
+import { renderFakeServerStats } from '../rendering/fake-server.js';
+import { renderFakeUserStats } from '../rendering/fake-user.js';
+import { renderFakeReport } from '../rendering/fake-report.js';
+
+registerCommand({
+  name: 'fake',
+  description: 'Generate fictional statistics (admin only, demo)',
+  category: 'Admin',
+  adminOnly: true,
+  execute: async ({ msg, args }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ You need Administrator permissions to generate fake statistics.' });
+      return;
+    }
+
+    const sub = args[0]?.toLowerCase();
+
+    // m?fake @user
+    const mentionedUser = msg.mentions.users.first();
+
+    if (mentionedUser) {
+      const fakeUser = generateFakeUser(mentionedUser.username);
+      const buf = await renderFakeUserStats(fakeUser);
+      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-userstats.png' })] });
+      return;
+    }
+
+    if (sub === 'user') {
+      const fakeUser = generateFakeUser();
+      const buf = await renderFakeUserStats(fakeUser);
+      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-userstats.png' })] });
+      return;
+    }
+
+    if (sub === 'weekly') {
+      const fakeReport = generateFakeReport('weekly');
+      const buf = await renderFakeReport(fakeReport);
+      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-weekly.png' })] });
+      return;
+    }
+
+    if (sub === 'monthly') {
+      const fakeReport = generateFakeReport('monthly');
+      const buf = await renderFakeReport(fakeReport);
+      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-monthly.png' })] });
+      return;
+    }
+
+    // Default: m?fake (server stats)
+    const fakeServer = generateFakeServer();
+    const buf = await renderFakeServerStats(fakeServer);
+    await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-stats.png' })] });
   },
 });
 
