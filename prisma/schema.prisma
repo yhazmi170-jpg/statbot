@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Guild {
+  id              String          @id
+  name            String
+  iconUrl         String?
+  prefix          String          @default("m?")
+  timezone        String          @default("UTC")
+  ownerId         String?
+  memberCount     Int             @default(0)
+  channelCount    Int             @default(0)
+  roleCount       Int             @default(0)
+  emojiCount      Int             @default(0)
+  boostLevel      Int             @default(0)
+  boostCount      Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  dailyStats      GuildDailyStats[]
+  hourlyStats     GuildHourlyStats[]
+  userDailyStats  UserDailyStats[]
+  channelStats    ChannelStats[]
+  voiceSessions   VoiceSession[]
+  reportConfigs   ReportConfig[]
+  excludedChannels ExcludedChannel[]
+  excludedRoles   ExcludedRole[]
+
+  @@index([id])
+}
+
+model User {
+  id        String    @id
+  username  String
+  avatarUrl String?
+  createdAt DateTime  @default(now())
+
+  dailyStats UserDailyStats[]
+  voiceSessions VoiceSession[]
+
+  @@index([id])
+}
+
+model Channel {
+  id        String    @id
+  name      String
+  type      String    @default("text")
+  guildId   String
+  createdAt DateTime  @default(now())
+
+  dailyStats ChannelStats[]
+
+  @@index([guildId])
+  @@index([id])
+}
+
+model GuildDailyStats {
+  id            String   @id @default(cuid())
+  guildId       String
+  date          DateTime
+  totalMessages Int      @default(0)
+  uniqueUsers   Int      @default(0)
+  totalVoiceMs  BigInt   @default(0)
+  joins         Int      @default(0)
+  leaves        Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, date])
+  @@index([guildId, date])
+}
+
+model GuildHourlyStats {
+  id            String   @id @default(cuid())
+  guildId       String
+  date          DateTime
+  hour          Int
+  messages      Int      @default(0)
+  voiceMs       BigInt   @default(0)
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, date, hour])
+  @@index([guildId, date])
+}
+
+model UserDailyStats {
+  id            String   @id @default(cuid())
+  guildId       String
+  userId        String
+  date          DateTime
+  messages      Int      @default(0)
+  voiceMs       BigInt   @default(0)
+  topChannelId  String?
+  topHour       Int?
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, userId, date])
+  @@index([guildId, userId, date])
+  @@index([guildId, date])
+}
+
+model ChannelStats {
+  id            String   @id @default(cuid())
+  guildId       String
+  channelId     String
+  date          DateTime
+  messages      Int      @default(0)
+  uniqueUsers   Int      @default(0)
+  voiceMs       BigInt   @default(0)
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  channel       Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, channelId, date])
+  @@index([guildId, channelId, date])
+  @@index([guildId, date])
+}
+
+model VoiceSession {
+  id          String    @id @default(cuid())
+  guildId     String
+  userId      String
+  channelId   String
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  durationMs  BigInt    @default(0)
+
+  guild       Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, userId, startedAt])
+  @@index([guildId, channelId, startedAt])
+  @@index([startedAt])
+}
+
+model ReportConfig {
+  id        String   @id @default(cuid())
+  guildId   String
+  channelId String
+  interval  String   @default("weekly")
+  enabled   Boolean  @default(true)
+  lastRun   DateTime?
+  createdAt DateTime @default(now())
+
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, channelId])
+}
+
+model ExcludedChannel {
+  id        String   @id @default(cuid())
+  guildId   String
+  channelId String
+
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, channelId])
+}
+
+model ExcludedRole {
+  id      String @id @default(cuid())
+  guildId String
+  roleId  String
+
+  guild   Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, roleId])
+}
