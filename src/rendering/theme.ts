@@ -1,3 +1,13 @@
+import { GlobalFonts } from '@napi-rs/canvas';
+import { join } from 'path';
+
+// Register Inter font
+const fontsDir = join(process.cwd(), 'fonts');
+GlobalFonts.registerFromPath(join(fontsDir, 'Inter-Regular.ttf'), 'Inter');
+GlobalFonts.registerFromPath(join(fontsDir, 'Inter-Bold.ttf'), 'Inter Bold');
+GlobalFonts.registerFromPath(join(fontsDir, 'Inter-Medium.ttf'), 'Inter Medium');
+GlobalFonts.registerFromPath(join(fontsDir, 'Inter-SemiBold.ttf'), 'Inter SemiBold');
+
 export const PAD = 30;
 
 export const T = {
@@ -59,7 +69,7 @@ export const T = {
   heat5: '#a52828',
 
   // Fonts
-  font: 'sans-serif',
+  font: 'Inter',
 } as const;
 
 // ─── Utility ──────────────────────────────────────────
@@ -89,7 +99,9 @@ export function text(ctx: any, str: string, x: number, y: number, opts?: {
 }) {
   const o = opts || {};
   ctx.fillStyle = o.color || T.text;
-  ctx.font = `${o.weight || 400} ${o.size || 14}px ${T.font}`;
+  const w = o.weight || 400;
+  const fontFamily = w >= 700 ? 'Inter Bold' : w >= 600 ? 'Inter SemiBold' : w >= 500 ? 'Inter Medium' : 'Inter';
+  ctx.font = `${w} ${o.size || 14}px ${fontFamily}`;
   ctx.textAlign = o.align || 'left';
   ctx.textBaseline = o.baseline || 'top';
   ctx.fillText(str, x, y);
@@ -98,7 +110,9 @@ export function text(ctx: any, str: string, x: number, y: number, opts?: {
 }
 
 export function truncate(ctx: any, str: string, maxW: number, opts?: { size?: number; weight?: number }): string {
-  ctx.font = `${opts?.weight || 400} ${opts?.size || 13}px ${T.font}`;
+  const w = opts?.weight || 400;
+  const fontFamily = w >= 700 ? 'Inter Bold' : w >= 600 ? 'Inter SemiBold' : w >= 500 ? 'Inter Medium' : 'Inter';
+  ctx.font = `${w} ${opts?.size || 13}px ${fontFamily}`;
   if (ctx.measureText(str).width <= maxW) return str;
   let s = str;
   while (s.length > 0 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
