@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, lineChart, heatmap, footer, sanitizeText } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, lineChart, heatmap, footer, sanitizeText, formatPeakHour } from './components.js';
 import type { FakeServerData } from '../fake/generator.js';
 
 export async function renderFakeServerStats(d: FakeServerData): Promise<Buffer> {
@@ -15,12 +15,13 @@ export async function renderFakeServerStats(d: FakeServerData): Promise<Buffer> 
   fillRect(ctx, PAD, PAD + 75 + 8, W - PAD * 2, 30, 'rgba(220,38,38,0.08)', 8);
   text(ctx, 'FICTIONAL DATA  •  DEMO', PAD + 16, PAD + 75 + 14, { size: 13, weight: 700, color: T.accentBright });
 
+  const peakHourStr = d.peakHour.replace(':00', '');
   const stats = [
     { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
     { label: 'Active Users', value: numStr(d.uniqueUsers), color: T.green },
     { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
     { label: 'Growth', value: `${d.growthPct > 0 ? '+' : ''}${d.growthPct}%`, color: d.growthPct >= 0 ? T.green : T.red },
-    { label: 'Peak', value: d.peakDay + ' ' + d.peakHour, color: T.yellow },
+    { label: 'Peak', value: d.peakDay + ' ' + formatPeakHour(peakHourStr), color: T.yellow },
   ];
   for (let i = 0; i < stats.length; i++) statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
 

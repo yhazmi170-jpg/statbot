@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, panelBg, panelHeader, panelContentY, heatmap, footer } from './components.js';
+import { headerBanner, panelBg, panelHeader, panelContentY, heatmap, footer, formatPeakHour } from './components.js';
 
 interface Data { guildName: string; grid: number[][] }
 
@@ -18,7 +18,7 @@ export async function renderHeatmap(d: Data): Promise<Buffer> {
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   headerBanner(ctx, 'Activity Heatmap', `${d.guildName} • Last 7 Days`, {
-    rightLabel: 'Peak', rightValue: peakVal > 0 ? `${dayNames[peakDay]} ${String(peakHour).padStart(2, '0')}:00` : '—',
+    rightLabel: 'Peak', rightValue: peakVal > 0 ? `${dayNames[peakDay]} ${formatPeakHour(peakHour)}` : '—',
   });
 
   const fullW = W - PAD * 2;
