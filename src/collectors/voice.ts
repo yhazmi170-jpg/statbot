@@ -1,5 +1,5 @@
 import { VoiceState } from 'discord.js';
-import { prisma, log } from '../database/index.js';
+import { prisma, log, ensureUser, ensureGuild } from '../database/index.js';
 
 const activeSessions = new Map<string, { guildId: string; userId: string; channelId: string; startedAt: Date }>();
 
@@ -25,30 +25,31 @@ export function onVoiceStateUpdate(old: VoiceState, new_: VoiceState) {
     if (session) {
       activeSessions.delete(key);
       const durationMs = Date.now() - session.startedAt.getTime();
-      prisma.voiceSession.create({
-        data: {
-          guildId: session.guildId,
-          userId: session.userId,
-          channelId: session.channelId,
-          startedAt: session.startedAt,
-          endedAt: new Date(),
-          durationMs: BigInt(durationMs),
-        },
-      }).catch(err => log.error({ err }, 'Error saving voice session'));
+      ensureUser(session.userId, 'unknown').then(() => {
+        prisma.voiceSession.create({
+          data: {
+            guildId: session.guildId,
+            userId: session.userId,
+            channelId: session.channelId,
+            startedAt: session.startedAt,
+            endedAt: new Date(),
+            durationMs: BigInt(durationMs),
+          },
+        }).catch(err => log.error({ err }, 'Error saving voice session'));
 
-      // Update daily aggregates
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      prisma.userDailyStats.upsert({
-        where: { guildId_userId_date: { guildId, userId, date: today } },
-        create: { guildId, userId, date: today, voiceMs: BigInt(durationMs) },
-        update: { voiceMs: { increment: BigInt(durationMs) } },
-      }).catch(() => {});
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        prisma.userDailyStats.upsert({
+          where: { guildId_userId_date: { guildId, userId, date: today } },
+          create: { guildId, userId, date: today, voiceMs: BigInt(durationMs) },
+          update: { voiceMs: { increment: BigInt(durationMs) } },
+        }).catch(() => {});
 
-      prisma.guildDailyStats.upsert({
-        where: { guildId_date: { guildId, date: today } },
-        create: { guildId, date: today, totalVoiceMs: BigInt(durationMs) },
-        update: { totalVoiceMs: { increment: BigInt(durationMs) } },
+        prisma.guildDailyStats.upsert({
+          where: { guildId_date: { guildId, date: today } },
+          create: { guildId, date: today, totalVoiceMs: BigInt(durationMs) },
+          update: { totalVoiceMs: { increment: BigInt(durationMs) } },
+        }).catch(() => {});
       }).catch(() => {});
     }
   }
@@ -57,16 +58,18 @@ export function onVoiceStateUpdate(old: VoiceState, new_: VoiceState) {
     const session = activeSessions.get(key);
     if (session) {
       const durationMs = Date.now() - session.startedAt.getTime();
-      prisma.voiceSession.create({
-        data: {
-          guildId: session.guildId,
-          userId: session.userId,
-          channelId: session.channelId,
-          startedAt: session.startedAt,
-          endedAt: new Date(),
-          durationMs: BigInt(durationMs),
-        },
-      }).catch(() => {});
+      ensureUser(session.userId, 'unknown').then(() =>
+        prisma.voiceSession.create({
+          data: {
+            guildId: session.guildId,
+            userId: session.userId,
+            channelId: session.channelId,
+            startedAt: session.startedAt,
+            endedAt: new Date(),
+            durationMs: BigInt(durationMs),
+          },
+        })
+      ).catch(() => {});
 
       activeSessions.set(key, {
         ...session,
@@ -82,6 +85,7 @@ export async function flushVoiceSessions() {
     const durationMs = Date.now() - session.startedAt.getTime();
     if (durationMs > 1000) {
       try {
+        await ensureUser(session.userId, 'unknown').catch(() => {});
         await prisma.voiceSession.create({
           data: {
             guildId: session.guildId,

@@ -29,24 +29,18 @@ async function flush() {
     const userIds = new Set(batch.map(b => b.userId));
     const channelIds = new Set(batch.map(b => b.channelId));
 
-    const guildMap = new Map<string, { name: string; iconUrl?: string }>();
-    const userMap = new Map<string, { username: string; avatarUrl?: string }>();
-    const channelMap = new Map<string, { name: string; type: string; guildId: string }>();
-
+    // Ensure parent records exist (PostgreSQL FK constraints)
     for (const g of guildIds) {
-      const guild = batch.find(b => b.guildId === g);
-      if (guild) {
-        // Minimal fetch - just ensure exists, don't block
-        guildMap.set(g, { name: 'unknown' });
-      }
+      const entry = batch.find(b => b.guildId === g);
+      if (entry) await ensureGuild(g, entry.guildId);
     }
     for (const u of userIds) {
       const entry = batch.find(b => b.userId === u);
-      if (entry) userMap.set(u, { username: 'unknown' });
+      if (entry) await ensureUser(u, 'unknown');
     }
     for (const c of channelIds) {
       const entry = batch.find(b => b.channelId === c);
-      if (entry) channelMap.set(c, { name: 'unknown', type: 'text', guildId: entry.guildId });
+      if (entry) await ensureChannel(c, 'unknown', 'text', entry.guildId);
     }
 
     // Upsert aggregates
