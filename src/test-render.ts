@@ -29,10 +29,10 @@ async function main() {
     guildName: '/marlboro social',
     totalMessages: 82492, activeUsers: 347, totalVoiceMs: 456789000,
     topChannels: [
-      { name: 'chat', messages: 54313 }, { name: 'general', messages: 30664 },
-      { name: 'media', messages: 10267 }, { name: 'gaming', messages: 8921 },
-      { name: 'off-topic', messages: 6821 }, { name: 'music', messages: 4312 },
-      { name: 'art', messages: 3211 }, { name: 'bot-cmds', messages: 2100 },
+      { name: '#chat', messages: 54313 }, { name: '#general', messages: 30664 },
+      { name: '#media', messages: 10267 }, { name: '#gaming', messages: 8921 },
+      { name: '#off-topic', messages: 6821 }, { name: '#music', messages: 4312 },
+      { name: '#art', messages: 3211 }, { name: '#bot-cmds', messages: 2100 },
     ],
     topUsers: [
       { userId: 'bunnycatdpg', messages: 5898 }, { userId: 'ninqz', messages: 4493 },
@@ -52,8 +52,8 @@ async function main() {
     totalMessages: 5898, totalVoiceMs: 23456000, activeDays: 24, totalDays: 30,
     firstSeen: '2024-01-15', peakHour: 21,
     topChannels: [
-      { name: 'chat', messages: 3200 }, { name: 'general', messages: 1400 },
-      { name: 'gaming', messages: 800 }, { name: 'media', messages: 498 },
+      { name: '#chat', messages: 3200 }, { name: '#general', messages: 1400 },
+      { name: '#gaming', messages: 800 }, { name: '#media', messages: 498 },
     ],
     hourlyActivity: hourlyByDay[0].map((messages, hour) => ({ hour, messages })),
     weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
@@ -150,8 +150,8 @@ async function main() {
       { userId: 'moonlight', messages: 1150 },
     ],
     topChannels: [
-      { name: 'chat', messages: 8900 }, { name: 'general', messages: 4200 },
-      { name: 'media', messages: 2100 }, { name: 'gaming', messages: 1800 },
+      { name: '#chat', messages: 8900 }, { name: '#general', messages: 4200 },
+      { name: '#media', messages: 2100 }, { name: '#gaming', messages: 1800 },
     ],
     dailyMessages: Array.from({ length: 7 }, () => Math.floor(2200 + Math.random() * 800)),
     previousMessages: 16200,

@@ -77,7 +77,7 @@ export function headerBanner(ctx: any, title: string, subtitle: string, opts?: {
   }
 }
 
-// ─── STAT CARDS ────────────────────────────────────────
+// ─── STAT CARDS (auto-scale font) ──────────────────────
 
 export function statCard(ctx: any, index: number, label: string, value: string, accentColor?: string) {
   const x = PAD + index * (STAT_W + GAP);
@@ -89,11 +89,11 @@ export function statCard(ctx: any, index: number, label: string, value: string, 
 
   text(ctx, label.toUpperCase(), x + 16, y + 18, { size: 13, weight: 700, color: T.textDim });
 
-  // Dynamically size stat value to fit the card
+  // Auto-scale value font to fit card width
   const maxValW = w - 32;
   let fontSize = 44;
   ctx.font = `700 ${fontSize}px ${fontFamily(700)}`;
-  while (ctx.measureText(value).width > maxValW && fontSize > 20) {
+  while (ctx.measureText(value).width > maxValW && fontSize > 16) {
     fontSize -= 2;
     ctx.font = `700 ${fontSize}px ${fontFamily(700)}`;
   }
@@ -133,6 +133,11 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
   rank?: number; rankColor?: string; label: string; value: string;
   barPct?: number; isLast?: boolean;
 }) {
+  // Alternating row background
+  if (opts.rank !== undefined && opts.rank % 2 === 1) {
+    fillRect(ctx, x + 4, y + 2, w - 8, h - 4, 'rgba(255,255,255,0.02)', 4);
+  }
+
   if (!opts.isLast) {
     fillRect(ctx, x, y + h - 1, w, 1, T.borderSubtle);
   }
@@ -158,29 +163,26 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
   }
 }
 
-// ─── LEADERBOARD (with empty states) ───────────────────
+// ─── LEADERBOARD (with styled rows & empty states) ─────
 
 export function leaderboard(ctx: any, x: number, y: number, w: number, h: number,
-  items: Array<{ name: string; value: number }>, opts?: { maxItems?: number; valueLabel?: string }) {
+  items: Array<{ name: string; value: number }>, opts?: { maxItems?: number }) {
   const maxItems = opts?.maxItems || 8;
   const rowH = Math.floor((h - 44) / Math.min(items.length || maxItems, maxItems));
+  const maxVal = items.length > 0 ? Math.max(...items.map(i => i.value), 1) : 1;
 
   if (items.length === 0) {
-    // Empty state: show placeholder rows
     for (let i = 0; i < maxItems; i++) {
       const ry = y + 40 + i * rowH;
+      if (i % 2 === 0) fillRect(ctx, x + 4, ry + 2, w - 8, rowH - 4, 'rgba(255,255,255,0.02)', 4);
       if (i < maxItems - 1) fillRect(ctx, x, ry + rowH - 1, w, 1, T.borderSubtle);
-
       const rankX = x + 12;
       text(ctx, String(i + 1).padStart(2, ' '), rankX, ry + rowH / 2 - 10, { size: 18, weight: 700, color: T.textFaint });
-
-      const nameX = rankX + 38;
-      text(ctx, '—', nameX, ry + rowH / 2 - 10, { size: 16, weight: 500, color: T.textFaint });
+      text(ctx, '—', rankX + 38, ry + rowH / 2 - 10, { size: 16, weight: 500, color: T.textFaint });
     }
     return;
   }
 
-  const maxVal = items[0]?.value || 1;
   for (let i = 0; i < Math.min(items.length, maxItems); i++) {
     const ry = y + 40 + i * rowH;
     const item = items[i];
@@ -203,6 +205,76 @@ export function emptyState(ctx: any, x: number, y: number, w: number, h: number,
   text(ctx, message || 'No data available', x + w / 2, y + h / 2 - 8, {
     size: 14, weight: 500, color: T.textDim, align: 'center', baseline: 'middle'
   });
+}
+
+// ─── AREA LINE CHART (crimson gradient fill) ───────────
+
+export function areaLineChart(ctx: any, x: number, y: number, w: number, h: number, data: number[], opts?: {
+  labels?: string[]; color?: string;
+}) {
+  const n = data.length;
+  if (n === 0) { emptyState(ctx, x, y, w, h); return; }
+
+  const color = opts?.color || T.accentBright;
+  const max = Math.max(...data, 1);
+  const topPad = 20;
+  const chartH = h - topPad - 20;
+
+  // Y-axis grid + labels
+  const ySteps = 4;
+  for (let i = 0; i <= ySteps; i++) {
+    const val = Math.round((max * i) / ySteps);
+    const yy = y + topPad + chartH - (i / ySteps) * chartH;
+    text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+    if (i > 0) {
+      ctx.setLineDash?.([4, 4]);
+      fillRect(ctx, x, yy, w, 1, T.chartGrid);
+      ctx.setLineDash?.([]);
+    }
+  }
+
+  // Build points
+  const points = data.map((val, idx) => ({
+    px: x + (idx / (n - 1)) * w,
+    py: y + topPad + chartH - (val / max) * chartH,
+  }));
+
+  // Gradient fill below line
+  const gradient = ctx.createLinearGradient(0, y + topPad, 0, y + topPad + chartH);
+  gradient.addColorStop(0, 'rgba(220, 38, 38, 0.25)');
+  gradient.addColorStop(1, 'rgba(220, 38, 38, 0.0)');
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].px, points[0].py);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].px, points[i].py);
+  }
+  ctx.lineTo(points[points.length - 1].px, y + topPad + chartH);
+  ctx.lineTo(points[0].px, y + topPad + chartH);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Stroke line
+  ctx.beginPath();
+  ctx.moveTo(points[0].px, points[0].py);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].px, points[i].py);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // X-axis labels
+  if (opts?.labels && opts.labels.length > 0) {
+    const step = Math.max(1, Math.floor(n / 14));
+    for (let i = 0; i < n; i += step) {
+      const px = x + (i / (n - 1)) * w;
+      text(ctx, opts.labels[i] || '', px, y + topPad + chartH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
+    }
+  }
 }
 
 // ─── BAR CHART ─────────────────────────────────────────

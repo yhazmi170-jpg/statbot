@@ -10,9 +10,9 @@ const USERNAMES = [
 ];
 
 const CHANNEL_NAMES = [
-  'chat', 'general', 'media', 'gaming', 'off-topic',
-  'memes', 'music', 'art', 'dev', 'bot-commands',
-  'voice-chat', 'announcements', 'rules', 'introductions', 'spam',
+  '#chat', '#general', '#media', '#gaming', '#off-topic',
+  '#memes', '#music', '#art', '#dev', '#bot-commands',
+  '#voice-chat', '#announcements', '#rules', '#introductions', '#spam',
 ];
 
 const DAYS_14 = Array.from({ length: 14 }, (_, i) => String(i + 1));

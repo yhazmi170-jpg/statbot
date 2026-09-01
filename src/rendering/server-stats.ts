@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, areaLineChart, rowItem, heatmap, footer } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
 interface Hourly { hour: number; messages: number }
@@ -76,10 +76,9 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
   panelHeader(ctx, tl, 'Message Activity', 'Last 7 Days');
-  barChart(ctx, tl.x + 50, panelContentY(tl), tl.w - 70, tl.h - 55,
+  areaLineChart(ctx, tl.x + 50, panelContentY(tl), tl.w - 70, tl.h - 55,
     hourlyActivity.map(h => h.messages), {
       labels: hourlyActivity.map(h => `${String(h.hour).padStart(2, '0')}`),
-      showValues: true,
     });
 
   const tr = PANELS.topRight;
