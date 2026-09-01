@@ -1,75 +1,57 @@
 import { GlobalFonts } from '@napi-rs/canvas';
 import { join } from 'path';
 
-// Register Inter font
 const fontsDir = join(process.cwd(), 'fonts');
 GlobalFonts.registerFromPath(join(fontsDir, 'Inter-Regular.ttf'), 'Inter');
 GlobalFonts.registerFromPath(join(fontsDir, 'Inter-Bold.ttf'), 'Inter Bold');
 GlobalFonts.registerFromPath(join(fontsDir, 'Inter-Medium.ttf'), 'Inter Medium');
 GlobalFonts.registerFromPath(join(fontsDir, 'Inter-SemiBold.ttf'), 'Inter SemiBold');
 
-export const PAD = 30;
+export const PAD = 24;
+export const W = 1400;
+export const H = 900;
+export const COL_GAP = 14;
+export const HALF_W = (W - PAD * 2 - COL_GAP) / 2;
 
 export const T = {
-  W: 1400,
-  H: 900,
+  W, H,
 
-  // Backgrounds
   bg: '#0d0d0f',
   panel: '#141418',
   panelAlt: '#1a1a1f',
-  panelHover: '#1f1f25',
   row: '#111114',
   rowAlt: '#161619',
 
-  // Borders
-  border: '#2a1012',
-  borderLight: '#3a1518',
-  borderAccent: '#6f0000',
+  border: '#232020',
+  borderLight: '#2e2525',
 
-  // Text
   text: '#e8e6e3',
   textMuted: '#9a9590',
   textDim: '#6a6560',
   textFaint: '#4a4540',
 
-  // Primary accent — deep Marlboro red
   accent: '#8b0000',
-  accentBright: '#a51d1d',
-  accentSoft: '#6f0000',
-  accentBg: 'rgba(139,0,0,0.12)',
-  accentBorder: '#5a0000',
+  accentBright: '#b22222',
+  accentSoft: '#5a0000',
+  accentBg: 'rgba(178,34,34,0.10)',
 
-  // Positive
   green: '#3a7a3a',
   greenSoft: '#2d5e2d',
-  greenBg: 'rgba(58,122,58,0.10)',
-
-  // Negative
   red: '#8b0000',
   redSoft: '#6f0000',
-  redBg: 'rgba(139,0,0,0.10)',
-
-  // Warning
   yellow: '#c9a84c',
-  yellowSoft: '#8a7235',
 
-  // Chart
-  chartLine: '#8b0000',
-  chartFill: 'rgba(139,0,0,0.18)',
-  chartGrid: '#1f1516',
+  chartLine: '#b22222',
+  chartFill: 'rgba(178,34,34,0.15)',
+  chartGrid: '#1e1818',
   chartText: '#6a5555',
 
-  // Heatmap — red scale
   heat0: '#111114',
   heat1: '#2a1012',
   heat2: '#3d1518',
   heat3: '#5a1a1a',
   heat4: '#7a2020',
   heat5: '#a52828',
-
-  // Fonts
-  font: 'Inter',
 } as const;
 
 // ─── Utility ──────────────────────────────────────────
@@ -94,14 +76,21 @@ export function fillRect(ctx: any, x: number, y: number, w: number, h: number, c
   else ctx.fillRect(x, y, w, h);
 }
 
+function fontFamily(weight: number): string {
+  if (weight >= 700) return 'Inter Bold';
+  if (weight >= 600) return 'Inter SemiBold';
+  if (weight >= 500) return 'Inter Medium';
+  return 'Inter';
+}
+
 export function text(ctx: any, str: string, x: number, y: number, opts?: {
-  size?: number; weight?: number; color?: string; align?: 'left'|'center'|'right'; baseline?: 'top'|'middle'|'bottom';
+  size?: number; weight?: number; color?: string;
+  align?: 'left' | 'center' | 'right';
+  baseline?: 'top' | 'middle' | 'bottom';
 }) {
   const o = opts || {};
   ctx.fillStyle = o.color || T.text;
-  const w = o.weight || 400;
-  const fontFamily = w >= 700 ? 'Inter Bold' : w >= 600 ? 'Inter SemiBold' : w >= 500 ? 'Inter Medium' : 'Inter';
-  ctx.font = `${w} ${o.size || 14}px ${fontFamily}`;
+  ctx.font = `${o.weight || 400} ${o.size || 14}px ${fontFamily(o.weight || 400)}`;
   ctx.textAlign = o.align || 'left';
   ctx.textBaseline = o.baseline || 'top';
   ctx.fillText(str, x, y);
@@ -111,8 +100,7 @@ export function text(ctx: any, str: string, x: number, y: number, opts?: {
 
 export function truncate(ctx: any, str: string, maxW: number, opts?: { size?: number; weight?: number }): string {
   const w = opts?.weight || 400;
-  const fontFamily = w >= 700 ? 'Inter Bold' : w >= 600 ? 'Inter SemiBold' : w >= 500 ? 'Inter Medium' : 'Inter';
-  ctx.font = `${w} ${opts?.size || 13}px ${fontFamily}`;
+  ctx.font = `${w} ${opts?.size || 13}px ${fontFamily(w)}`;
   if (ctx.measureText(str).width <= maxW) return str;
   let s = str;
   while (s.length > 0 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);

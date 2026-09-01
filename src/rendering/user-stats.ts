@@ -1,144 +1,166 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, fillRect, text, numStr, durStr, PAD } from './theme.js';
-import { sectionBg, lineChart, barList, footer, COL_GAP, HALF_W } from './components.js';
+import { T, W, H, PAD, fillRect, text, truncate, numStr, durStr, rr } from './theme.js';
+import { headerBanner, statCard, sectionBg, barChart, lineChart, rowItem, footer, HALF_W, COL_GAP } from './components.js';
 
+interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
+interface Hourly { hour: number; messages: number }
 interface Data {
-  user: { username: string; avatarUrl?: string };
-  rank: number;
-  totalMembers: number;
+  guildName?: string;
+  userId?: string;
+  username?: string;
+  user?: { username: string; avatarUrl?: string };
+  avatarUrl?: string;
   totalMessages: number;
   totalVoiceMs: number;
-  voiceSessions: number;
   activeDays: number;
   totalDays: number;
-  topChannels: { channelId: string; messages: number }[];
-  dailyMessages: number[];
+  firstSeen?: string;
+  peakHour?: number;
+  topChannels: Channel[];
+  hourlyActivity?: Hourly[];
+  hourlyMessages?: number[];
   weekdayMessages: number[];
-  hourlyMessages: number[];
+  dailyMessages?: number[];
+  rank: number;
+  totalUsers?: number;
+  totalMembers?: number;
   percentile: number;
-  msgsThisWeek: number;
-  msgsThisMonth: number;
-  voiceThisWeek: number;
-  voiceThisMonth: number;
+  voiceSessions?: number;
+  msgsThisWeek?: number;
+  msgsThisMonth?: number;
+  voiceThisWeek?: number;
+  voiceThisMonth?: number;
 }
 
 export async function renderUserStats(d: Data): Promise<Buffer> {
-  const W = 1400, H = 900;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
   fillRect(ctx, 0, 0, W, H, T.bg);
 
+  const username = d.username || d.user?.username || d.userId || 'User';
+  const totalUsers = d.totalUsers || d.totalMembers || 0;
+  const guildName = d.guildName || '';
+
+  // Build hourly activity from hourlyMessages if needed
+  let hourlyActivity: Hourly[];
+  if (d.hourlyActivity) {
+    hourlyActivity = d.hourlyActivity;
+  } else if (d.hourlyMessages) {
+    hourlyActivity = d.hourlyMessages.map((messages, hour) => ({ hour, messages }));
+  } else {
+    hourlyActivity = Array.from({ length: 24 }, (_, h) => ({ hour: h, messages: 0 }));
+  }
+
+  const peakHour = d.peakHour ?? hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 }).hour;
+
+  // Map topChannels
+  const topChannels = d.topChannels.map(c => ({
+    name: c.name || c.channelId || 'unknown',
+    messages: c.messages,
+    voiceMs: c.voiceMs || 0,
+  }));
+
   let y = PAD;
 
   // ─── HEADER ─────────────────────────────────────────
-  fillRect(ctx, PAD, y, W - PAD * 2, 68, T.panel, 6);
+  fillRect(ctx, PAD, y, W - PAD * 2, 80, T.panel, 8);
   fillRect(ctx, PAD, y, W - PAD * 2, 1, T.accent);
 
-  // Avatar placeholder
-  fillRect(ctx, PAD + 14, y + 12, 44, 44, T.accentSoft, 22);
+  // Avatar circle
+  const avatarSize = 52;
+  const avatarX = PAD + 16;
+  const avatarY = y + 14;
+  fillRect(ctx, avatarX, avatarY, avatarSize, avatarSize, T.accentSoft, avatarSize / 2);
+  text(ctx, username.charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2 - 10, { size: 22, weight: 700, color: T.accentBright, align: 'center' });
 
-  text(ctx, d.user.username, PAD + 68, y + 10, { size: 18, weight: 700, color: T.text });
-  text(ctx, 'PERSONAL STATISTICS', PAD + 68, y + 32, { size: 11, weight: 600, color: T.textDim });
-  text(ctx, 'Last 30 Days', PAD + 68, y + 48, { size: 10, color: T.textFaint });
+  // Username + server
+  const textX = avatarX + avatarSize + 14;
+  text(ctx, truncate(ctx, username, 300, { size: 24 }), textX, y + 14, { size: 24, weight: 700, color: T.text });
+  text(ctx, `${guildName}  •  Last ${d.totalDays} Days`, textX, y + 44, { size: 12, color: T.textMuted });
 
-  text(ctx, `#${d.rank}`, W - PAD - 16, y + 8, { size: 28, weight: 700, color: T.accentBright, align: 'right' });
-  text(ctx, `of ${d.totalMembers}`, W - PAD - 16, y + 42, { size: 10, color: T.textMuted, align: 'right' });
-  y += 80;
+  // Rank badge
+  text(ctx, `#${d.rank}`, W - PAD - 20, y + 14, { size: 32, weight: 700, color: T.accentBright, align: 'right' });
+  text(ctx, `of ${numStr(totalUsers)} users`, W - PAD - 20, y + 50, { size: 11, color: T.textMuted, align: 'right' });
 
-  // ─── STAT ROW ───────────────────────────────────────
+  y += 94;
+
+  // ─── PRIMARY STATS ──────────────────────────────────
   const stats = [
     { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
-    { label: 'Voice', value: durStr(d.totalVoiceMs), color: T.accent },
-    { label: 'Activity', value: d.totalDays > 0 ? Math.round((d.activeDays / d.totalDays) * 100) + '%' : '0%', color: T.green },
-    { label: 'Rank', value: `#${d.rank}`, color: T.yellow },
-    { label: 'Sessions', value: String(d.voiceSessions), color: T.accentSoft },
+    { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
+    { label: 'Active Days', value: `${d.activeDays}/${d.totalDays}` },
+    { label: 'Peak Hour', value: `${String(peakHour).padStart(2, '0')}:00` },
+    { label: 'Percentile', value: `Top ${d.percentile}%` },
   ];
   const statW = (W - PAD * 2 - COL_GAP * (stats.length - 1)) / stats.length;
+  const statH = 72;
   for (let i = 0; i < stats.length; i++) {
-    const sx = PAD + i * (statW + COL_GAP);
-    fillRect(ctx, sx, y, statW, 52, T.panel, 6);
-    fillRect(ctx, sx, y, statW, 1, T.border);
-    text(ctx, stats[i].label.toUpperCase(), sx + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-    text(ctx, stats[i].value, sx + 12, y + 26, { size: 18, weight: 700, color: stats[i].color });
+    statCard(ctx, PAD + i * (statW + COL_GAP), y, statW, statH, stats[i].label, stats[i].value, stats[i].color);
   }
-  y += 64;
+  y += statH + 14;
 
-  // ─── MAIN ROW (chart + channels) ────────────────────
-  const mainH = 240;
+  // ─── MAIN CONTENT ───────────────────────────────────
+  const contentH = H - y - PAD - 50;
+  const colH = Math.floor((contentH - COL_GAP) / 2);
+  const leftX = PAD;
+  const rightX = PAD + HALF_W + COL_GAP;
 
-  sectionBg(ctx, PAD, y, HALF_W, mainH);
-  const dayLabels = Array.from({ length: d.dailyMessages.length }, (_, i) => String(i + 1));
-  const ls = Math.max(1, Math.floor(dayLabels.length / 7));
-  lineChart(ctx, PAD + 4, y + 2, HALF_W - 8, mainH - 4, d.dailyMessages, {
-    title: 'MESSAGE ACTIVITY',
-    labels: dayLabels.filter((_, i) => i % ls === 0),
-    color: T.accentBright,
+  // ── TOP LEFT: Activity by Hour ──
+  sectionBg(ctx, leftX, y, HALF_W, colH);
+  fillRect(ctx, leftX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'ACTIVITY BY HOUR', leftX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
+  barChart(ctx, leftX + 50, y + 44, HALF_W - 70, colH - 64, hourlyActivity.map(h => h.messages), {
+    labels: hourlyActivity.map(h => `${String(h.hour).padStart(2, '0')}`),
+    showValues: true,
   });
 
-  sectionBg(ctx, PAD + HALF_W + COL_GAP, y, HALF_W, mainH);
-  barList(ctx, PAD + HALF_W + COL_GAP + 4, y + 2, HALF_W - 8, d.topChannels.slice(0, 8).map(c => ({
-    label: '#' + c.channelId,
-    value: c.messages,
-  })), { title: 'TOP CHANNELS', height: mainH - 4 });
+  // ── TOP RIGHT: Activity by Weekday ──
+  sectionBg(ctx, rightX, y, HALF_W, colH);
+  fillRect(ctx, rightX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'ACTIVITY BY WEEKDAY', rightX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  barChart(ctx, rightX + 50, y + 44, HALF_W - 70, colH - 64, d.weekdayMessages, {
+    labels: dayLabels,
+    showValues: true,
+    color: T.accent,
+  });
 
-  y += mainH + 8;
+  y += colH + COL_GAP;
 
-  // ─── BOTTOM ROW (3 columns) ─────────────────────────
-  const botH = H - y - PAD - 20;
-  const thirdW = (W - PAD * 2 - COL_GAP * 2) / 3;
+  // ── BOTTOM: Top Channels ──
+  sectionBg(ctx, leftX, y, W - PAD * 2, colH);
+  fillRect(ctx, leftX, y, W - PAD * 2, 34, T.panelAlt, 0);
+  text(ctx, 'TOP CHANNELS', leftX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
+  text(ctx, `${topChannels.length} channels`, leftX + 16, y + 22, { size: 10, color: T.textDim });
 
-  // Weekday bars
-  sectionBg(ctx, PAD, y, thirdW, botH);
-  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const wdMax = Math.max(...d.weekdayMessages, 1);
-  const wdBarW = (thirdW - 32) / 7;
-  text(ctx, 'PEAK DAY', PAD + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-  const peakDayIdx = d.weekdayMessages.indexOf(Math.max(...d.weekdayMessages));
-  text(ctx, weekdays[peakDayIdx], PAD + 12, y + 24, { size: 14, weight: 700, color: T.accentBright });
-  for (let i = 0; i < 7; i++) {
-    const bx = PAD + 16 + i * wdBarW;
-    const bh = (d.weekdayMessages[i] / wdMax) * (botH - 52);
-    fillRect(ctx, bx + 4, y + botH - 20 - bh, wdBarW - 8, bh, i === peakDayIdx ? T.accentBright : T.accentSoft, 3);
-    text(ctx, weekdays[i], bx + wdBarW / 2, y + botH - 14, { size: 9, color: T.textDim, align: 'center' });
+  const maxCh = topChannels[0]?.messages || 1;
+  const chCols = 2;
+  const chColW = (W - PAD * 2 - COL_GAP) / chCols;
+  const chPerCol = Math.ceil(Math.min(topChannels.length, 10) / chCols);
+  const chRowH = Math.min(32, (colH - 42) / chPerCol);
+
+  for (let ci = 0; ci < chCols; ci++) {
+    const cx = leftX + ci * (chColW + COL_GAP);
+    for (let i = 0; i < chPerCol; i++) {
+      const idx = ci * chPerCol + i;
+      if (idx >= Math.min(topChannels.length, 10)) break;
+      const ch = topChannels[idx];
+      const ry = y + 40 + i * chRowH;
+      const pct = maxCh > 0 ? ch.messages / maxCh : 0;
+      const rankColor = idx === 0 ? T.accentBright : idx === 1 ? T.accent : idx === 2 ? T.accentSoft : T.textDim;
+      rowItem(ctx, cx, ry, chColW, chRowH, {
+        rank: idx + 1,
+        rankColor,
+        label: '#' + truncate(ctx, ch.name, chColW - 200, { size: 13 }),
+        value: numStr(ch.messages),
+        barPct: pct,
+        isLast: i === chPerCol - 1,
+      });
+    }
   }
 
-  // Peak hours
-  sectionBg(ctx, PAD + thirdW + COL_GAP, y, thirdW, botH);
-  const peakIdx = d.hourlyMessages.indexOf(Math.max(...d.hourlyMessages));
-  const peakStart = Math.max(0, peakIdx - 1);
-  const peakEnd = Math.min(23, peakIdx + 1);
-  text(ctx, 'PEAK HOURS', PAD + thirdW + COL_GAP + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-  text(ctx, `${String(peakStart).padStart(2, '0')}:00 – ${String(peakEnd + 1).padStart(2, '0')}:00`, PAD + thirdW + COL_GAP + 12, y + 24, { size: 14, weight: 700, color: T.accentBright });
-
-  const sparkX = PAD + thirdW + COL_GAP + 12;
-  const sparkY = y + 48;
-  const sparkW = thirdW - 24;
-  const sparkH = botH - 68;
-  const hMax = Math.max(...d.hourlyMessages, 1);
-  ctx.beginPath();
-  for (let i = 0; i < 24; i++) {
-    const px = sparkX + (i / 23) * sparkW;
-    const py = sparkY + sparkH - (d.hourlyMessages[i] / hMax) * sparkH;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.strokeStyle = T.accentBright;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Percentile
-  sectionBg(ctx, PAD + (thirdW + COL_GAP) * 2, y, thirdW, botH);
-  text(ctx, 'SERVER PERCENTILE', PAD + (thirdW + COL_GAP) * 2 + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-  if (d.percentile > 0) {
-    text(ctx, `${d.percentile}%`, PAD + (thirdW + COL_GAP) * 2 + 12, y + 26, { size: 28, weight: 700, color: T.accentBright });
-    text(ctx, `More active than ${d.percentile}%`, PAD + (thirdW + COL_GAP) * 2 + 12, y + 60, { size: 10, color: T.textMuted });
-    text(ctx, 'of server members', PAD + (thirdW + COL_GAP) * 2 + 12, y + 74, { size: 10, color: T.textMuted });
-    fillRect(ctx, PAD + (thirdW + COL_GAP) * 2 + 12, y + botH - 24, thirdW - 24, 8, T.panelAlt, 4);
-    fillRect(ctx, PAD + (thirdW + COL_GAP) * 2 + 12, y + botH - 24, (thirdW - 24) * (d.percentile / 100), 8, T.accentBright, 4);
-  }
-
-  footer(ctx, 'StatBot • m?help for commands');
+  footer(ctx, 'StatBot  •  m?help for commands');
 
   return canvas.toBuffer('image/png');
 }

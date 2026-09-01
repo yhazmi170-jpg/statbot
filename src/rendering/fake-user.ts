@@ -1,10 +1,9 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, fillRect, text, numStr, durStr, PAD } from './theme.js';
-import { sectionBg, lineChart, barList, footer, COL_GAP, HALF_W } from './components.js';
+import { T, W, H, PAD, fillRect, text, truncate, numStr, durStr, rr } from './theme.js';
+import { headerBanner, statCard, sectionBg, barChart, rowItem, HALF_W, COL_GAP, footer } from './components.js';
 import type { FakeUserData } from '../fake/generator.js';
 
 export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
-  const W = 1400, H = 900;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
@@ -13,115 +12,95 @@ export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
   let y = PAD;
 
   // ─── HEADER ─────────────────────────────────────────
-  fillRect(ctx, PAD, y, W - PAD * 2, 68, T.panel, 6);
+  fillRect(ctx, PAD, y, W - PAD * 2, 80, T.panel, 8);
   fillRect(ctx, PAD, y, W - PAD * 2, 1, T.accent);
 
-  // Avatar placeholder
-  fillRect(ctx, PAD + 14, y + 12, 44, 44, T.accentSoft, 22);
+  // Avatar
+  const avatarSize = 52;
+  const avatarX = PAD + 16;
+  const avatarY = y + 14;
+  fillRect(ctx, avatarX, avatarY, avatarSize, avatarSize, T.accentSoft, avatarSize / 2);
+  text(ctx, d.username.charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2 - 10, { size: 22, weight: 700, color: T.accentBright, align: 'center' });
 
-  text(ctx, d.username, PAD + 68, y + 10, { size: 18, weight: 700, color: T.text });
-  text(ctx, 'PERSONAL STATISTICS', PAD + 68, y + 32, { size: 11, weight: 600, color: T.textDim });
-  text(ctx, 'Last 30 Days', PAD + 68, y + 48, { size: 10, color: T.textFaint });
+  const textX = avatarX + avatarSize + 14;
+  text(ctx, d.username, textX, y + 14, { size: 24, weight: 700, color: T.text });
+  text(ctx, 'Last 30 Days', textX, y + 44, { size: 12, color: T.textMuted });
 
-  text(ctx, `#${d.rank}`, W - PAD - 16, y + 8, { size: 28, weight: 700, color: T.accentBright, align: 'right' });
-  text(ctx, `of ${d.totalMembers}`, W - PAD - 16, y + 42, { size: 10, color: T.textMuted, align: 'right' });
-  y += 80;
+  text(ctx, `#${d.rank}`, W - PAD - 20, y + 14, { size: 32, weight: 700, color: T.accentBright, align: 'right' });
+  text(ctx, `of ${numStr(d.totalMembers)} users`, W - PAD - 20, y + 50, { size: 11, color: T.textMuted, align: 'right' });
+
+  y += 94;
 
   // ─── DEMO LABEL ─────────────────────────────────────
-  fillRect(ctx, PAD, y, W - PAD * 2, 24, 'rgba(139,0,0,0.15)', 4);
-  text(ctx, 'FICTIONAL DATA  •  DEMO', PAD + 16, y + 6, { size: 10, weight: 600, color: T.accentBright });
-  y += 32;
+  fillRect(ctx, PAD, y, W - PAD * 2, 28, 'rgba(139,0,0,0.15)', 6);
+  text(ctx, 'FICTIONAL DATA  •  DEMO', PAD + 16, y + 7, { size: 11, weight: 600, color: T.accentBright });
+  y += 36;
 
-  // ─── STAT ROW ───────────────────────────────────────
+  // ─── PRIMARY STATS ──────────────────────────────────
   const stats = [
     { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
-    { label: 'Voice', value: durStr(d.totalVoiceMs), color: T.accent },
-    { label: 'Activity', value: d.totalDays > 0 ? Math.round((d.activeDays / d.totalDays) * 100) + '%' : '0%', color: T.green },
-    { label: 'Rank', value: `#${d.rank}`, color: T.yellow },
-    { label: 'Sessions', value: String(d.voiceSessions), color: T.accentSoft },
+    { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
+    { label: 'Active Days', value: `${d.activeDays}/${d.totalDays}` },
+    { label: 'Percentile', value: `Top ${d.percentile}%` },
+    { label: 'Voice Sessions', value: String(d.voiceSessions) },
   ];
   const statW = (W - PAD * 2 - COL_GAP * (stats.length - 1)) / stats.length;
+  const statH = 72;
   for (let i = 0; i < stats.length; i++) {
-    const sx = PAD + i * (statW + COL_GAP);
-    fillRect(ctx, sx, y, statW, 52, T.panel, 6);
-    fillRect(ctx, sx, y, statW, 1, T.border);
-    text(ctx, stats[i].label.toUpperCase(), sx + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-    text(ctx, stats[i].value, sx + 12, y + 26, { size: 18, weight: 700, color: stats[i].color });
+    statCard(ctx, PAD + i * (statW + COL_GAP), y, statW, statH, stats[i].label, stats[i].value, stats[i].color);
   }
-  y += 64;
+  y += statH + 14;
 
-  // ─── MAIN ROW (chart + channels) ────────────────────
-  const mainH = 240;
+  // ─── MAIN CONTENT ───────────────────────────────────
+  const contentH = H - y - PAD - 50;
+  const colH = Math.floor((contentH - COL_GAP) / 2);
+  const leftX = PAD;
+  const rightX = PAD + HALF_W + COL_GAP;
 
-  sectionBg(ctx, PAD, y, HALF_W, mainH);
+  // ── TOP LEFT: Daily Activity ──
+  sectionBg(ctx, leftX, y, HALF_W, colH);
+  fillRect(ctx, leftX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'DAILY MESSAGES', leftX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
   const dayLabels = Array.from({ length: d.dailyMessages.length }, (_, i) => String(i + 1));
-  const ls = Math.max(1, Math.floor(dayLabels.length / 7));
-  lineChart(ctx, PAD + 4, y + 2, HALF_W - 8, mainH - 4, d.dailyMessages, {
-    title: 'MESSAGE ACTIVITY',
+  const ls = Math.max(1, Math.floor(dayLabels.length / 15));
+  barChart(ctx, leftX + 50, y + 44, HALF_W - 70, colH - 64, d.dailyMessages, {
     labels: dayLabels.filter((_, i) => i % ls === 0),
-    color: T.accentBright,
+    showValues: false,
   });
 
-  sectionBg(ctx, PAD + HALF_W + COL_GAP, y, HALF_W, mainH);
-  barList(ctx, PAD + HALF_W + COL_GAP + 4, y + 2, HALF_W - 8, d.topChannels.slice(0, 8).map(c => ({
-    label: '#' + c.channelId,
-    value: c.messages,
-  })), { title: 'TOP CHANNELS', height: mainH - 4 });
-
-  y += mainH + 8;
-
-  // ─── BOTTOM ROW (3 columns) ─────────────────────────
-  const botH = H - y - PAD - 20;
-  const thirdW = (W - PAD * 2 - COL_GAP * 2) / 3;
-
-  // Weekday bars
-  sectionBg(ctx, PAD, y, thirdW, botH);
+  // ── TOP RIGHT: Weekday Activity ──
+  sectionBg(ctx, rightX, y, HALF_W, colH);
+  fillRect(ctx, rightX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'ACTIVITY BY WEEKDAY', rightX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
   const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const wdMax = Math.max(...d.weekdayMessages, 1);
-  const wdBarW = (thirdW - 32) / 7;
-  text(ctx, 'PEAK DAY', PAD + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-  const peakDayIdx = d.weekdayMessages.indexOf(Math.max(...d.weekdayMessages));
-  text(ctx, weekdays[peakDayIdx], PAD + 12, y + 24, { size: 14, weight: 700, color: T.accentBright });
-  for (let i = 0; i < 7; i++) {
-    const bx = PAD + 16 + i * wdBarW;
-    const bh = (d.weekdayMessages[i] / wdMax) * (botH - 52);
-    fillRect(ctx, bx + 4, y + botH - 20 - bh, wdBarW - 8, bh, i === peakDayIdx ? T.accentBright : T.accentSoft, 3);
-    text(ctx, weekdays[i], bx + wdBarW / 2, y + botH - 14, { size: 9, color: T.textDim, align: 'center' });
-  }
+  barChart(ctx, rightX + 50, y + 44, HALF_W - 70, colH - 64, d.weekdayMessages, {
+    labels: weekdays,
+    showValues: true,
+    color: T.accent,
+  });
 
-  // Peak hours
-  sectionBg(ctx, PAD + thirdW + COL_GAP, y, thirdW, botH);
-  const peakIdx = d.hourlyMessages.indexOf(Math.max(...d.hourlyMessages));
-  const peakStart = Math.max(0, peakIdx - 1);
-  const peakEnd = Math.min(23, peakIdx + 1);
-  text(ctx, 'PEAK HOURS', PAD + thirdW + COL_GAP + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-  text(ctx, `${String(peakStart).padStart(2, '0')}:00 – ${String(peakEnd + 1).padStart(2, '0')}:00`, PAD + thirdW + COL_GAP + 12, y + 24, { size: 14, weight: 700, color: T.accentBright });
+  y += colH + COL_GAP;
 
-  const sparkX = PAD + thirdW + COL_GAP + 12;
-  const sparkY = y + 48;
-  const sparkW = thirdW - 24;
-  const sparkH = botH - 68;
-  const hMax = Math.max(...d.hourlyMessages, 1);
-  ctx.beginPath();
-  for (let i = 0; i < 24; i++) {
-    const px = sparkX + (i / 23) * sparkW;
-    const py = sparkY + sparkH - (d.hourlyMessages[i] / hMax) * sparkH;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.strokeStyle = T.accentBright;
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  // ── BOTTOM: Top Channels ──
+  sectionBg(ctx, leftX, y, W - PAD * 2, colH);
+  fillRect(ctx, leftX, y, W - PAD * 2, 34, T.panelAlt, 0);
+  text(ctx, 'TOP CHANNELS', leftX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
 
-  // Percentile
-  sectionBg(ctx, PAD + (thirdW + COL_GAP) * 2, y, thirdW, botH);
-  text(ctx, 'SERVER PERCENTILE', PAD + (thirdW + COL_GAP) * 2 + 12, y + 8, { size: 10, weight: 600, color: T.textDim });
-  if (d.percentile > 0) {
-    text(ctx, `${d.percentile}%`, PAD + (thirdW + COL_GAP) * 2 + 12, y + 26, { size: 28, weight: 700, color: T.accentBright });
-    text(ctx, `More active than ${d.percentile}%`, PAD + (thirdW + COL_GAP) * 2 + 12, y + 60, { size: 10, color: T.textMuted });
-    text(ctx, 'of server members', PAD + (thirdW + COL_GAP) * 2 + 12, y + 74, { size: 10, color: T.textMuted });
-    fillRect(ctx, PAD + (thirdW + COL_GAP) * 2 + 12, y + botH - 24, thirdW - 24, 8, T.panelAlt, 4);
-    fillRect(ctx, PAD + (thirdW + COL_GAP) * 2 + 12, y + botH - 24, (thirdW - 24) * (d.percentile / 100), 8, T.accentBright, 4);
+  const maxCh = d.topChannels[0]?.messages || 1;
+  const chRowH = Math.min(34, (colH - 42) / Math.min(d.topChannels.length, 8));
+  for (let i = 0; i < Math.min(d.topChannels.length, 8); i++) {
+    const ry = y + 40 + i * chRowH;
+    const ch = d.topChannels[i];
+    const pct = maxCh > 0 ? ch.messages / maxCh : 0;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    rowItem(ctx, leftX, ry, W - PAD * 2, chRowH, {
+      rank: i + 1,
+      rankColor,
+      label: '#' + truncate(ctx, ch.channelId, W - PAD * 2 - 200, { size: 13 }),
+      value: numStr(ch.messages),
+      barPct: pct,
+      isLast: i === Math.min(d.topChannels.length, 8) - 1,
+    });
   }
 
   footer(ctx, 'FICTIONAL DATA • DEMO  —  StatBot m?fake user');

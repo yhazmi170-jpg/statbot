@@ -7,7 +7,7 @@ import { renderHelp } from './rendering/help.js';
 import { renderServerOverview } from './rendering/server-overview.js';
 import { renderGrowth } from './rendering/growth.js';
 import { renderCompare } from './rendering/compare.js';
-import { renderWeeklyReport } from './rendering/reports.js';
+import { renderReport } from './rendering/reports.js';
 import { renderFakeServerStats } from './rendering/fake-server.js';
 import { renderFakeUserStats } from './rendering/fake-user.js';
 import { renderFakeReport } from './rendering/fake-report.js';
@@ -24,44 +24,63 @@ async function main() {
     })
   );
 
-  const dailyStats = Array.from({ length: 30 }, () => ({
-    totalMessages: Math.floor(2000 + Math.random() * 800),
-  }));
-
   // Server Stats
   console.log('m?stats...');
   writeFileSync('/tmp/test-stats.png', await renderServerStats({
-    guild: { name: '/marlboro social', memberCount: 1248 },
-    totalMessages: 82492, totalVoiceMs: 456789000, uniqueUsers: 347,
+    guildName: '/marlboro social',
+    totalMessages: 82492,
+    activeUsers: 347,
+    totalVoiceMs: 456789000,
     topChannels: [
-      { channelId: 'chat', messages: 54313 }, { channelId: 'general', messages: 30664 },
-      { channelId: 'media', messages: 10267 }, { channelId: 'gaming', messages: 8921 },
-      { channelId: 'off-topic', messages: 6821 }, { channelId: 'music', messages: 4312 },
-      { channelId: 'art', messages: 3211 }, { channelId: 'bot-cmds', messages: 2100 },
+      { name: 'chat', messages: 54313, voiceMs: 0 },
+      { name: 'general', messages: 30664, voiceMs: 0 },
+      { name: 'media', messages: 10267, voiceMs: 0 },
+      { name: 'gaming', messages: 8921, voiceMs: 0 },
+      { name: 'off-topic', messages: 6821, voiceMs: 0 },
+      { name: 'music', messages: 4312, voiceMs: 0 },
+      { name: 'art', messages: 3211, voiceMs: 0 },
+      { name: 'bot-cmds', messages: 2100, voiceMs: 0 },
     ],
     topUsers: [
-      { userId: 'bunnycatdpg', messages: 5898 }, { userId: 'ninqz', messages: 4493 },
-      { userId: 'semeiological', messages: 4297 }, { userId: 'astroboy', messages: 3921 },
-      { userId: 'moonlight', messages: 3812 }, { userId: 'shadowfox', messages: 3441 },
-      { userId: 'pixelwave', messages: 3182 }, { userId: 'neonridge', messages: 2993 },
+      { userId: 'bunnycatdpg', messages: 5898 },
+      { userId: 'ninqz', messages: 4493 },
+      { userId: 'semeiological', messages: 4297 },
+      { userId: 'astroboy', messages: 3921 },
+      { userId: 'moonlight', messages: 3812 },
+      { userId: 'shadowfox', messages: 3441 },
+      { userId: 'pixelwave', messages: 3182 },
+      { userId: 'neonridge', messages: 2993 },
     ],
-    dailyStats, hourlyByDay,
+    hourlyActivity: hourlyByDay[0].map((messages, hour) => ({ hour, messages })),
+    heatmapGrid: hourlyByDay,
+    weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
+    hourLabels: Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`),
+    period: 'Last 30 Days',
   }));
 
   // User Stats
   console.log('m?u...');
   writeFileSync('/tmp/test-me.png', await renderUserStats({
-    user: { username: 'bunnycatdpg' }, rank: 1, totalMembers: 1248,
-    totalMessages: 5898, totalVoiceMs: 23456000, voiceSessions: 47,
-    activeDays: 24, totalDays: 30,
+    guildName: '/marlboro social',
+    userId: 'bunnycatdpg',
+    username: 'bunnycatdpg',
+    totalMessages: 5898,
+    totalVoiceMs: 23456000,
+    activeDays: 24,
+    totalDays: 30,
+    firstSeen: '2024-01-15',
+    peakHour: 21,
     topChannels: [
-      { channelId: 'chat', messages: 3200 }, { channelId: 'general', messages: 1400 },
-      { channelId: 'gaming', messages: 800 }, { channelId: 'media', messages: 498 },
+      { name: 'chat', messages: 3200, voiceMs: 0 },
+      { name: 'general', messages: 1400, voiceMs: 0 },
+      { name: 'gaming', messages: 800, voiceMs: 0 },
+      { name: 'media', messages: 498, voiceMs: 0 },
     ],
-    dailyMessages: Array.from({ length: 30 }, () => Math.floor(150 + Math.random() * 100)),
+    hourlyActivity: hourlyByDay[0].map((messages, hour) => ({ hour, messages })),
     weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
-    hourlyMessages: hourlyByDay[0], percentile: 94,
-    msgsThisWeek: 2100, msgsThisMonth: 5898, voiceThisWeek: 8400000, voiceThisMonth: 23456000,
+    rank: 1,
+    totalUsers: 347,
+    percentile: 94,
   }));
 
   // Top Users
@@ -154,21 +173,26 @@ async function main() {
 
   // Weekly Report
   console.log('m?weekly...');
-  writeFileSync('/tmp/test-weekly.png', await renderWeeklyReport({
-    guildName: '/marlboro social', period: 'Weekly',
-    totalMessages: 18420, totalVoiceMs: 98760000, uniqueUsers: 234,
-    joins: 12, leaves: 3, peakHour: '21:00', peakDay: 'Saturday',
+  writeFileSync('/tmp/test-weekly.png', await renderReport({
+    type: 'weekly',
+    guildName: '/marlboro social', period: 'Aug 25 – Aug 31, 2026',
+    totalMessages: 18420, totalVoiceMs: 98760000, activeUsers: 234,
+    joins: 12, leaves: 3, peakHour: '21:00',
     topUsers: [
-      { userId: 'bunnycatdpg', messages: 1890 }, { userId: 'ninqz', messages: 1420 },
-      { userId: 'semeiological', messages: 1380 }, { userId: 'astroboy', messages: 1210 },
+      { userId: 'bunnycatdpg', messages: 1890 },
+      { userId: 'ninqz', messages: 1420 },
+      { userId: 'semeiological', messages: 1380 },
+      { userId: 'astroboy', messages: 1210 },
       { userId: 'moonlight', messages: 1150 },
     ],
     topChannels: [
-      { channelId: 'chat', messages: 8900 }, { channelId: 'general', messages: 4200 },
-      { channelId: 'media', messages: 2100 }, { channelId: 'gaming', messages: 1800 },
+      { name: 'chat', messages: 8900 },
+      { name: 'general', messages: 4200 },
+      { name: 'media', messages: 2100 },
+      { name: 'gaming', messages: 1800 },
     ],
     dailyMessages: Array.from({ length: 7 }, () => Math.floor(2200 + Math.random() * 800)),
-    hourlyByDay, prevMessages: 16200,
+    previousMessages: 16200,
   }));
 
   // === FAKE DEMO IMAGES ===

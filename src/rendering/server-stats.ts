@@ -1,92 +1,165 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, fillRect, text, truncate, numStr, durStr, PAD } from './theme.js';
-import { sectionBg, statRow, leaderboard, barList, lineChart, heatmap, footer, COL_GAP, HALF_W } from './components.js';
+import { T, W, H, PAD, fillRect, text, truncate, numStr, durStr } from './theme.js';
+import { headerBanner, statCard, HALF_W, COL_GAP, sectionBg, lineChart, heatmap, barChart, rowItem, footer } from './components.js';
 
+interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
+interface Hourly { hour: number; messages: number }
 interface Data {
-  guild: { name: string; memberCount: number };
+  guildName?: string;
+  guild?: { name: string; memberCount?: number };
+  guildId?: string;
+  iconUrl?: string;
+  period?: string;
   totalMessages: number;
+  activeUsers?: number;
+  uniqueUsers?: number;
   totalVoiceMs: number;
-  uniqueUsers: number;
-  topChannels: { channelId: string; messages: number }[];
+  topChannels: Channel[];
   topUsers: { userId: string; messages: number }[];
-  dailyStats: { totalMessages: number }[];
-  hourlyByDay: number[][];
+  hourlyActivity?: Hourly[];
+  hourlyByDay?: number[][];
+  heatmapGrid?: number[][];
+  weekdayMessages?: number[];
+  hourLabels?: string[];
+  dailyStats?: { totalMessages: number }[];
 }
 
 export async function renderServerStats(d: Data): Promise<Buffer> {
-  const W = 1400, H = 900;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
   fillRect(ctx, 0, 0, W, H, T.bg);
 
+  const guildName = d.guildName || d.guild?.name || 'Server';
+  const totalMessages = d.totalMessages;
+  const activeUsers = d.activeUsers || d.uniqueUsers || 0;
+  const period = d.period || 'Last 30 Days';
+
+  // Build hourly activity from hourlyByDay if not provided
+  let hourlyActivity: Hourly[];
+  if (d.hourlyActivity) {
+    hourlyActivity = d.hourlyActivity;
+  } else if (d.hourlyByDay) {
+    hourlyActivity = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      messages: d.hourlyByDay!.reduce((sum, day) => sum + (day[h] || 0), 0),
+    }));
+  } else {
+    hourlyActivity = Array.from({ length: 24 }, (_, h) => ({ hour: h, messages: 0 }));
+  }
+
+  // Build heatmap grid
+  const heatmapGrid = d.heatmapGrid || d.hourlyByDay || Array.from({ length: 7 }, () => Array(24).fill(0));
+
+  // Map topChannels to have name field
+  const topChannels = d.topChannels.map(c => ({
+    name: c.name || c.channelId || 'unknown',
+    messages: c.messages,
+    voiceMs: c.voiceMs || 0,
+  }));
+
   let y = PAD;
 
   // ─── HEADER ─────────────────────────────────────────
-  fillRect(ctx, PAD, y, W - PAD * 2, 68, T.panel, 6);
-  fillRect(ctx, PAD, y, W - PAD * 2, 1, T.accent);
-  text(ctx, d.guild.name.toUpperCase(), PAD + 16, y + 10, { size: 18, weight: 700, color: T.accentBright });
-  text(ctx, 'SERVER STATISTICS', PAD + 16, y + 32, { size: 11, weight: 600, color: T.textDim });
-  text(ctx, 'Last 30 Days', PAD + 16, y + 48, { size: 10, color: T.textFaint });
-  text(ctx, numStr(d.totalMessages), W - PAD - 16, y + 8, { size: 22, weight: 700, color: T.accentBright, align: 'right' });
-  text(ctx, 'MESSAGES', W - PAD - 16, y + 32, { size: 10, color: T.textDim, align: 'right' });
-  text(ctx, `${d.uniqueUsers} active users`, W - PAD - 16, y + 48, { size: 10, color: T.textMuted, align: 'right' });
-  y += 80;
+  headerBanner(ctx, y, 'StatBot', `${guildName} • ${period}`, {
+    rightLabel: 'Total Messages',
+    rightValue: numStr(totalMessages),
+  });
+  y += 78;
 
-  // ─── STAT ROW ───────────────────────────────────────
-  statRow(ctx, PAD, y, [
-    { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
-    { label: 'Active Users', value: numStr(d.uniqueUsers), color: T.green },
-    { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h', color: T.accent },
-    { label: 'Top Channel', value: d.topChannels[0] ? '#' + d.topChannels[0].channelId : '—' },
-    { label: 'Peak Hour', value: getPeakHour(d.hourlyByDay) },
-  ]);
-  y += 68;
+  // ─── PRIMARY STATS ROW ──────────────────────────────
+  const peak = hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 });
+  const stats = [
+    { label: 'Messages', value: numStr(totalMessages), color: T.accentBright },
+    { label: 'Active Users', value: numStr(activeUsers) },
+    { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
+    { label: 'Top Channel', value: topChannels[0] ? '#' + truncate(ctx, topChannels[0].name, 100, { size: 20 }) : '—' },
+    { label: 'Peak Hour', value: `${String(peak.hour).padStart(2, '0')}:00` },
+  ];
+  const statW = (W - PAD * 2 - COL_GAP * (stats.length - 1)) / stats.length;
+  const statH = 72;
+  for (let i = 0; i < stats.length; i++) {
+    statCard(ctx, PAD + i * (statW + COL_GAP), y, statW, statH, stats[i].label, stats[i].value, stats[i].color);
+  }
+  y += statH + 14;
 
-  // ─── MAIN ROW ───────────────────────────────────────
-  const mainH = 260;
+  // ─── MAIN CONTENT: 2 columns ────────────────────────
+  const contentH = H - y - PAD - 50;
+  const colH = Math.floor((contentH - COL_GAP) / 2);
+  const leftX = PAD;
+  const rightX = PAD + HALF_W + COL_GAP;
 
-  sectionBg(ctx, PAD, y, HALF_W, mainH);
-  const msgDaily = d.dailyStats.map(s => s.totalMessages);
-  const dayLabels = ['1', '5', '10', '15', '20', '25', '30'];
-  lineChart(ctx, PAD + 4, y + 2, HALF_W - 8, mainH - 4, msgDaily, {
-    title: 'MESSAGE ACTIVITY',
-    labels: dayLabels,
-    color: T.accentBright,
+  // ── TOP LEFT: Message Activity ──
+  sectionBg(ctx, leftX, y, HALF_W, colH);
+  fillRect(ctx, leftX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'MESSAGE ACTIVITY', leftX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
+  text(ctx, 'Last 7 Days', leftX + 16, y + 22, { size: 10, color: T.textDim });
+
+  const chartAreaY = y + 40;
+  const chartAreaH = colH - 50;
+  barChart(ctx, leftX + 50, chartAreaY, HALF_W - 70, chartAreaH - 10, hourlyActivity.map(h => h.messages), {
+    labels: hourlyActivity.map(h => `${String(h.hour).padStart(2, '0')}`),
+    showValues: true,
   });
 
-  sectionBg(ctx, PAD + HALF_W + COL_GAP, y, HALF_W, mainH);
-  const topUserRows = d.topUsers.slice(0, 8).map((u, i) => ({
-    rank: i + 1,
-    name: u.userId,
-    value: numStr(u.messages),
-    color: T.accentSoft,
-    pct: d.totalMessages > 0 ? ((u.messages / d.totalMessages) * 100).toFixed(1) + '%' : '',
-  }));
-  leaderboard(ctx, PAD + HALF_W + COL_GAP, y + 2, HALF_W, topUserRows, { title: 'TOP USERS', height: mainH - 4 });
+  // ── TOP RIGHT: Top Users ──
+  sectionBg(ctx, rightX, y, HALF_W, colH);
+  fillRect(ctx, rightX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'TOP USERS', rightX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
+  text(ctx, `${d.topUsers.length} users`, rightX + 16, y + 22, { size: 10, color: T.textDim });
 
-  y += mainH + 8;
+  const maxMsg = d.topUsers[0]?.messages || 1;
+  const userRowH = Math.min(36, (colH - 42) / Math.min(d.topUsers.length, 15));
+  for (let i = 0; i < Math.min(d.topUsers.length, 15); i++) {
+    const ry = y + 40 + i * userRowH;
+    const u = d.topUsers[i];
+    const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    rowItem(ctx, rightX, ry, HALF_W, userRowH, {
+      rank: i + 1,
+      rankColor,
+      label: truncate(ctx, u.userId, HALF_W - 200, { size: 14 }),
+      value: numStr(u.messages),
+      barPct: pct,
+      isLast: i === Math.min(d.topUsers.length, 15) - 1,
+    });
+  }
 
-  // ─── BOTTOM ROW ─────────────────────────────────────
-  const botH = H - y - PAD - 20;
+  y += colH + COL_GAP;
 
-  sectionBg(ctx, PAD, y, HALF_W, botH);
-  barList(ctx, PAD + 4, y + 2, HALF_W - 8, d.topChannels.slice(0, 8).map(c => ({
-    label: '#' + c.channelId,
-    value: c.messages,
-  })), { title: 'TOP CHANNELS', height: botH - 4 });
+  // ── BOTTOM LEFT: Top Channels ──
+  sectionBg(ctx, leftX, y, HALF_W, colH);
+  fillRect(ctx, leftX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'TOP CHANNELS', leftX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
+  text(ctx, `${topChannels.length} channels`, leftX + 16, y + 22, { size: 10, color: T.textDim });
 
-  sectionBg(ctx, PAD + HALF_W + COL_GAP, y, HALF_W, botH);
-  heatmap(ctx, PAD + HALF_W + COL_GAP + 4, y + 2, HALF_W - 8, botH - 4, d.hourlyByDay, { title: 'ACTIVITY HEATMAP' });
+  const maxCh = topChannels[0]?.messages || 1;
+  const chRowH = Math.min(36, (colH - 42) / Math.min(topChannels.length, 15));
+  for (let i = 0; i < Math.min(topChannels.length, 15); i++) {
+    const ry = y + 40 + i * chRowH;
+    const ch = topChannels[i];
+    const pct = maxCh > 0 ? ch.messages / maxCh : 0;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    rowItem(ctx, leftX, ry, HALF_W, chRowH, {
+      rank: i + 1,
+      rankColor,
+      label: '#' + truncate(ctx, ch.name, HALF_W - 200, { size: 14 }),
+      value: numStr(ch.messages),
+      barPct: pct,
+      isLast: i === Math.min(topChannels.length, 15) - 1,
+    });
+  }
 
-  footer(ctx, 'StatBot • m?help for commands');
+  // ── BOTTOM RIGHT: Heatmap ──
+  sectionBg(ctx, rightX, y, HALF_W, colH);
+  fillRect(ctx, rightX, y, HALF_W, 34, T.panelAlt, 0);
+  text(ctx, 'ACTIVITY HEATMAP', rightX + 16, y + 9, { size: 13, weight: 700, color: T.accentBright });
+  text(ctx, 'Hourly Activity', rightX + 16, y + 22, { size: 10, color: T.textDim });
+
+  heatmap(ctx, rightX + 14, y + 42, HALF_W - 28, colH - 52, heatmapGrid);
+
+  // ─── FOOTER ─────────────────────────────────────────
+  footer(ctx, 'StatBot  •  m?help for commands');
 
   return canvas.toBuffer('image/png');
-}
-
-function getPeakHour(grid: number[][]): string {
-  const totals = Array(24).fill(0);
-  for (const day of grid) for (let h = 0; h < 24; h++) totals[h] += day[h] || 0;
-  const peak = totals.indexOf(Math.max(...totals));
-  return `${String(peak).padStart(2, '0')}:00`;
 }
