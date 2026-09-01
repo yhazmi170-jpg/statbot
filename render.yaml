@@ -9,7 +9,7 @@ services:
       - key: DISCORD_TOKEN
         sync: false
       - key: DATABASE_URL
-        value: file:./data/statbot.db
+        sync: false
       - key: PREFIX
         value: m?
       - key: TZ

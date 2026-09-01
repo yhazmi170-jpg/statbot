@@ -118,7 +118,7 @@ async function main() {
       createdAt: '<t:1609459200:R>', ownerTag: 'bunnycatdpg',
     },
     totalMessages: 82492, totalVoiceMs: 456789000, uniqueUsers: 347,
-    msgsPerDay: 2750, peakHour: '21:00', peakDay: 'Saturday', joins: 89, leaves: 23,
+    msgsPerDay: 2750, peakHour: '9:00 PM', peakDay: 'Saturday', joins: 89, leaves: 23,
   }));
 
   console.log('m?growth...');
@@ -135,15 +135,15 @@ async function main() {
 
   console.log('m?compare...');
   writeFileSync('/tmp/test-compare.png', await renderCompare(
-    { label: 'Last 14 Days', messages: 82492, activeUsers: 347, voiceHours: 126.9, joins: 45, leaves: 12, peakHour: '21:00' },
-    { label: 'Previous 14 Days', messages: 71883, activeUsers: 312, voiceHours: 112.4, joins: 38, leaves: 18, peakHour: '20:00' },
+    { label: 'Last 14 Days', messages: 82492, activeUsers: 347, voiceHours: 126.9, joins: 45, leaves: 12, peakHour: '9:00 PM' },
+    { label: 'Previous 14 Days', messages: 71883, activeUsers: 312, voiceHours: 112.4, joins: 38, leaves: 18, peakHour: '8:00 PM' },
   ));
 
   console.log('m?weekly...');
   writeFileSync('/tmp/test-weekly.png', await renderReport({
     type: 'weekly', guildName: '/marlboro social', period: 'Aug 25 – Aug 31, 2026',
     totalMessages: 18420, totalVoiceMs: 98760000, activeUsers: 234,
-    joins: 12, leaves: 3, peakHour: '21:00',
+    joins: 12, leaves: 3, peakHour: '9:00 PM',
     topUsers: [
       { userId: 'bunnycatdpg', messages: 1890 }, { userId: 'ninqz', messages: 1420 },
       { userId: 'semeiological', messages: 1380 }, { userId: 'astroboy', messages: 1210 },
