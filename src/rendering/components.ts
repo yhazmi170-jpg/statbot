@@ -3,12 +3,25 @@ import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, 
 export { COL_GAP, PANEL_W, PANEL_H, PANELS, GRID_TOP, STAT_W, STAT_H, GAP };
 export const HALF_W = PANEL_W;
 
+// ─── FORMAT PEAK HOUR (24h to 12h AM/PM) ───────────────
+
+export function formatPeakHour(peakHourRaw: any): string {
+  let hour = typeof peakHourRaw === 'string' ? parseInt(peakHourRaw.split(':')[0], 10) : Number(peakHourRaw);
+  if (isNaN(hour) || hour < 0 || hour > 23) return '12:00 PM';
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:00 ${period}`;
+}
+
 // ─── SANITIZE TEXT (strip unrenderable glyphs) ──────────
 
 export function sanitizeText(str: string): string {
-  // Strip unrenderable decorative symbols/emojis that cause [NO GLYPH] errors
-  // Keep basic ASCII, common Latin, digits, and # (for channel names)
-  return str.replace(/[^\x20-\x7E]/g, '').trim() || '';
+  if (!str) return '';
+  const clean = str
+    .replace(/<a?:[a-zA-Z0-9_]+:[0-9]+>/g, '') // Remove Discord custom emoji codes
+    .replace(/[^\x00-\x7F]/g, '')            // Strip non-ASCII characters causing [NO GLYPH]
+    .trim();
+  return clean.length > 0 ? clean : 'channel';
 }
 
 // ─── FIT TEXT (safe truncation) ─────────────────────────

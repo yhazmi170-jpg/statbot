@@ -78,11 +78,16 @@ registerCommand({
       messages: c.messages,
       voiceMs: 0,
     }));
+    const resolvedUsers = await Promise.all(guildStats.topUsers.map(async u => ({
+      userId: await resolveUserName(msg.guild!, u.userId),
+      messages: u.messages,
+    })));
     const buf = await renderServerStats({
       guildName: msg.guild!.name,
       guild: { name: msg.guild!.name, memberCount: msg.guild!.memberCount },
       ...guildStats,
       topChannels: resolvedChannels,
+      topUsers: resolvedUsers,
       hourlyByDay,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'stats.png' })] });
@@ -100,7 +105,7 @@ registerCommand({
     const growth = await queries.getGrowthData(g.id, 30);
     const peakHours = await queries.getPeakHoursAgg(g.id, 30);
     const peakDay = getPeakDay(await queries.getActivityHeatmap(g.id, 7));
-    const peakHour = peakHours[0] ? `${String(peakHours[0].hour).padStart(2, '0')}:00` : '—';
+    const peakHour = peakHours[0] ? formatPeakHour(peakHours[0].hour) : '—';
 
     const totalJoins = growth.reduce((s, g) => s + g.joins, 0);
     const totalLeaves = growth.reduce((s, g) => s + g.leaves, 0);
@@ -211,22 +216,31 @@ registerCommand({
     if (mode === 'voice') {
       const voice = await queries.getTopVoice(msg.guild!.id, days, limit);
       const totalVoice = voice.reduce((s, v) => s + v.voiceMs, 0);
-      const buf = await renderTopUsers(msg.guild!.name, `Voice • Last ${days} Days`, voice.map(v => ({
-        userId: v.userId, messages: 0, voiceMs: v.voiceMs,
-      })), totalVoice);
+      const resolvedUsers = await Promise.all(voice.map(async v => ({
+        userId: await resolveUserName(msg.guild!, v.userId),
+        messages: 0,
+        voiceMs: v.voiceMs,
+      })));
+      const buf = await renderTopUsers(msg.guild!.name, `Voice • Last ${days} Days`, resolvedUsers, totalVoice);
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-voice.png' })] });
     } else if (mode === 'activity') {
       const users = await queries.getServerRank(msg.guild!.id, days, limit);
-      const buf = await renderTopUsers(msg.guild!.name, `Activity • Last ${days} Days`, users.map(u => ({
-        userId: u.userId, messages: u.messages, voiceMs: u.voiceMs,
-      })), users.reduce((s, u) => s + u.messages, 0));
+      const resolvedUsers = await Promise.all(users.map(async u => ({
+        userId: await resolveUserName(msg.guild!, u.userId),
+        messages: u.messages,
+        voiceMs: u.voiceMs,
+      })));
+      const buf = await renderTopUsers(msg.guild!.name, `Activity • Last ${days} Days`, resolvedUsers, users.reduce((s, u) => s + u.messages, 0));
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-activity.png' })] });
     } else {
       const users = await queries.getTopUsers(msg.guild!.id, days, limit);
       const totalMsgs = users.reduce((s, u) => s + u.messages, 0);
-      const buf = await renderTopUsers(msg.guild!.name, `Messages • Last ${days} Days`, users.map(u => ({
-        userId: u.userId, messages: u.messages, voiceMs: 0,
-      })), totalMsgs);
+      const resolvedUsers = await Promise.all(users.map(async u => ({
+        userId: await resolveUserName(msg.guild!, u.userId),
+        messages: u.messages,
+        voiceMs: 0,
+      })));
+      const buf = await renderTopUsers(msg.guild!.name, `Messages • Last ${days} Days`, resolvedUsers, totalMsgs);
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top.png' })] });
     }
   },
@@ -338,7 +352,7 @@ registerCommand({
     const peakHours = await queries.getPeakHoursAgg(msg.guild!.id, 30);
     const heatmap = await queries.getActivityHeatmap(msg.guild!.id, 7);
     const peakDay = getPeakDay(heatmap);
-    const top5 = peakHours.slice(0, 5).map(h => `**${String(h.hour).padStart(2, '0')}:00** — ${h.messages.toLocaleString()} msgs`).join('\n');
+    const top5 = peakHours.slice(0, 5).map(h => `**${formatPeakHour(h.hour)}** — ${h.messages.toLocaleString()} msgs`).join('\n');
 
     await msg.reply({
       embeds: [{
@@ -440,7 +454,14 @@ registerCommand({
   execute: async ({ msg, args }) => {
     const days = parseInt(args[0]) || 30;
     const users = await queries.getServerRank(msg.guild!.id, days, 20);
-    const buf = await renderServerRank(msg.guild!.name, users, days);
+    const resolvedUsers = await Promise.all(users.map(async u => ({
+      userId: await resolveUserName(msg.guild!, u.userId),
+      messages: u.messages,
+      voiceMs: u.voiceMs,
+      activeDays: u.activeDays,
+      score: u.score,
+    })));
+    const buf = await renderServerRank(msg.guild!.name, resolvedUsers, days);
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'serverrank.png' })] });
   },
 });
@@ -458,7 +479,13 @@ registerCommand({
     }
     const days = Math.min(Math.max(parseInt(args[0]) || 7, 3), 7);
     const users = await queries.getInactiveMembers(msg.guild!.id, days, 20);
-    const buf = await renderInactive(msg.guild!.name, days, users);
+    const resolvedUsers = await Promise.all(users.map(async u => ({
+      userId: await resolveUserName(msg.guild!, u.userId),
+      messages: u.messages,
+      voiceMs: u.voiceMs,
+      lastActivity: u.lastActivity,
+    })));
+    const buf = await renderInactive(msg.guild!.name, days, resolvedUsers);
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'inactive.png' })] });
   },
 });
@@ -482,6 +509,10 @@ registerCommand({
       name: resolveChannelName(msg.guild!, c.channelId),
       messages: c.messages,
     }));
+    const resolvedUsers = await Promise.all(topUsers.map(async u => ({
+      userId: await resolveUserName(msg.guild!, u.userId),
+      messages: u.messages,
+    })));
     const buf = await renderWeeklyReport({
       guildName: msg.guild!.name,
       period: 'Weekly',
@@ -490,9 +521,9 @@ registerCommand({
       uniqueUsers: stats.uniqueUsers,
       joins: growth.reduce((s, g) => s + g.joins, 0),
       leaves: growth.reduce((s, g) => s + g.leaves, 0),
-      peakHour: peakHours[0] ? `${String(peakHours[0].hour).padStart(2, '0')}:00` : '—',
+      peakHour: peakHours[0] ? formatPeakHour(peakHours[0].hour) : '—',
       peakDay: getPeakDay(hourlyByDay),
-      topUsers: topUsers.map(u => ({ userId: u.userId, messages: u.messages })),
+      topUsers: resolvedUsers,
       topChannels: resolvedChannels,
       dailyMessages: stats.dailyStats.map(s => s.totalMessages),
       hourlyByDay,
@@ -521,6 +552,10 @@ registerCommand({
       name: resolveChannelName(msg.guild!, c.channelId),
       messages: c.messages,
     }));
+    const resolvedUsers = await Promise.all(topUsers.map(async u => ({
+      userId: await resolveUserName(msg.guild!, u.userId),
+      messages: u.messages,
+    })));
     const buf = await renderMonthlyReport({
       guildName: msg.guild!.name,
       period: 'Monthly',
@@ -529,9 +564,9 @@ registerCommand({
       uniqueUsers: stats.uniqueUsers,
       joins: growth.reduce((s, g) => s + g.joins, 0),
       leaves: growth.reduce((s, g) => s + g.leaves, 0),
-      peakHour: peakHours[0] ? `${String(peakHours[0].hour).padStart(2, '0')}:00` : '—',
+      peakHour: peakHours[0] ? formatPeakHour(peakHours[0].hour) : '—',
       peakDay: getPeakDay(hourlyByDay),
-      topUsers: topUsers.map(u => ({ userId: u.userId, messages: u.messages })),
+      topUsers: resolvedUsers,
       topChannels: resolvedChannels,
       dailyMessages: stats.dailyStats.map(s => s.totalMessages),
       hourlyByDay,
@@ -708,16 +743,33 @@ registerCommand({
 
 // ─── Helpers ──────────────────────────────────────────
 
+function formatPeakHour(peakHourRaw: any): string {
+  let hour = typeof peakHourRaw === 'string' ? parseInt(peakHourRaw.split(':')[0], 10) : Number(peakHourRaw);
+  if (isNaN(hour) || hour < 0 || hour > 23) return '12:00 PM';
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:00 ${period}`;
+}
+
 function resolveChannelName(guild: Guild, channelId: string): string {
   const ch = guild.channels.cache.get(channelId);
   return ch ? `#${ch.name}` : '#deleted-channel';
+}
+
+async function resolveUserName(guild: Guild, userId: string): Promise<string> {
+  try {
+    const member = await guild.members.fetch(userId);
+    return member.displayName || member.user.username || userId;
+  } catch {
+    return userId;
+  }
 }
 
 function getPeakHour(grid: number[][]): string {
   const totals = Array(24).fill(0);
   for (const day of grid) for (let h = 0; h < 24; h++) totals[h] += day[h] || 0;
   const peak = totals.indexOf(Math.max(...totals));
-  return `${String(peak).padStart(2, '0')}:00`;
+  return formatPeakHour(peak);
 }
 
 function getPeakDay(grid: number[][]): string {

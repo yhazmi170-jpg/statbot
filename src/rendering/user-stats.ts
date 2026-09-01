@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr, durStr, THEME } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer, sanitizeText } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer, sanitizeText, formatPeakHour } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
 interface Hourly { hour: number; messages: number }
@@ -79,7 +79,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
     { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
     { label: 'Active Days', value: `${d.activeDays}/${d.totalDays}` },
-    { label: 'Peak Hour', value: String(peakHour).padStart(2, '0') },
+    { label: 'Peak Hour', value: formatPeakHour(peakHour) },
     { label: 'Percentile', value: `Top ${d.percentile}%` },
   ];
   for (let i = 0; i < stats.length; i++) {
