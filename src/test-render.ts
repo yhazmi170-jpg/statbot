@@ -24,66 +24,42 @@ async function main() {
     })
   );
 
-  // Server Stats
   console.log('m?stats...');
   writeFileSync('/tmp/test-stats.png', await renderServerStats({
     guildName: '/marlboro social',
-    totalMessages: 82492,
-    activeUsers: 347,
-    totalVoiceMs: 456789000,
+    totalMessages: 82492, activeUsers: 347, totalVoiceMs: 456789000,
     topChannels: [
-      { name: 'chat', messages: 54313, voiceMs: 0 },
-      { name: 'general', messages: 30664, voiceMs: 0 },
-      { name: 'media', messages: 10267, voiceMs: 0 },
-      { name: 'gaming', messages: 8921, voiceMs: 0 },
-      { name: 'off-topic', messages: 6821, voiceMs: 0 },
-      { name: 'music', messages: 4312, voiceMs: 0 },
-      { name: 'art', messages: 3211, voiceMs: 0 },
-      { name: 'bot-cmds', messages: 2100, voiceMs: 0 },
+      { name: 'chat', messages: 54313 }, { name: 'general', messages: 30664 },
+      { name: 'media', messages: 10267 }, { name: 'gaming', messages: 8921 },
+      { name: 'off-topic', messages: 6821 }, { name: 'music', messages: 4312 },
+      { name: 'art', messages: 3211 }, { name: 'bot-cmds', messages: 2100 },
     ],
     topUsers: [
-      { userId: 'bunnycatdpg', messages: 5898 },
-      { userId: 'ninqz', messages: 4493 },
-      { userId: 'semeiological', messages: 4297 },
-      { userId: 'astroboy', messages: 3921 },
-      { userId: 'moonlight', messages: 3812 },
-      { userId: 'shadowfox', messages: 3441 },
-      { userId: 'pixelwave', messages: 3182 },
-      { userId: 'neonridge', messages: 2993 },
+      { userId: 'bunnycatdpg', messages: 5898 }, { userId: 'ninqz', messages: 4493 },
+      { userId: 'semeiological', messages: 4297 }, { userId: 'astroboy', messages: 3921 },
+      { userId: 'moonlight', messages: 3812 }, { userId: 'shadowfox', messages: 3441 },
+      { userId: 'pixelwave', messages: 3182 }, { userId: 'neonridge', messages: 2993 },
     ],
     hourlyActivity: hourlyByDay[0].map((messages, hour) => ({ hour, messages })),
-    heatmapGrid: hourlyByDay,
-    weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
+    heatmapGrid: hourlyByDay, weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
     hourLabels: Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`),
     period: 'Last 30 Days',
   }));
 
-  // User Stats
   console.log('m?u...');
   writeFileSync('/tmp/test-me.png', await renderUserStats({
-    guildName: '/marlboro social',
-    userId: 'bunnycatdpg',
-    username: 'bunnycatdpg',
-    totalMessages: 5898,
-    totalVoiceMs: 23456000,
-    activeDays: 24,
-    totalDays: 30,
-    firstSeen: '2024-01-15',
-    peakHour: 21,
+    guildName: '/marlboro social', userId: 'bunnycatdpg', username: 'bunnycatdpg',
+    totalMessages: 5898, totalVoiceMs: 23456000, activeDays: 24, totalDays: 30,
+    firstSeen: '2024-01-15', peakHour: 21,
     topChannels: [
-      { name: 'chat', messages: 3200, voiceMs: 0 },
-      { name: 'general', messages: 1400, voiceMs: 0 },
-      { name: 'gaming', messages: 800, voiceMs: 0 },
-      { name: 'media', messages: 498, voiceMs: 0 },
+      { name: 'chat', messages: 3200 }, { name: 'general', messages: 1400 },
+      { name: 'gaming', messages: 800 }, { name: 'media', messages: 498 },
     ],
     hourlyActivity: hourlyByDay[0].map((messages, hour) => ({ hour, messages })),
     weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
-    rank: 1,
-    totalUsers: 347,
-    percentile: 94,
+    rank: 1, totalUsers: 347, percentile: 94,
   }));
 
-  // Top Users
   console.log('m?top...');
   writeFileSync('/tmp/test-top.png', await renderTopUsers('/marlboro social', 'Messages • Last 14 Days', [
     { userId: 'bunnycatdpg', messages: 5898, voiceMs: 12340000 },
@@ -98,20 +74,17 @@ async function main() {
     { userId: 'crimsonveil', messages: 2611, voiceMs: 6780000 },
   ], 37469));
 
-  // Activity
   console.log('m?activity...');
   writeFileSync('/tmp/test-activity.png', await renderActivityChart({
     guildName: '/marlboro social',
     hourly: hourlyByDay[0].map((messages, hour) => ({ hour, messages })),
   }));
 
-  // Heatmap
   console.log('m?heatmap...');
   writeFileSync('/tmp/test-heatmap.png', await renderHeatmap({
     guildName: '/marlboro social', grid: hourlyByDay,
   }));
 
-  // Help
   console.log('m?help...');
   writeFileSync('/tmp/test-help.png', await renderHelp([
     { name: 'stats', description: 'Server statistics overview', category: 'Analytics' },
@@ -137,7 +110,6 @@ async function main() {
     { name: 'ping', description: 'Check bot latency', category: 'Info' },
   ], 'm?'));
 
-  // Server Overview
   console.log('m?server...');
   writeFileSync('/tmp/test-server.png', await renderServerOverview({
     guild: {
@@ -146,16 +118,13 @@ async function main() {
       createdAt: '<t:1609459200:R>', ownerTag: 'bunnycatdpg',
     },
     totalMessages: 82492, totalVoiceMs: 456789000, uniqueUsers: 347,
-    msgsPerDay: 2750, peakHour: '21:00', peakDay: 'Saturday',
-    joins: 89, leaves: 23,
+    msgsPerDay: 2750, peakHour: '21:00', peakDay: 'Saturday', joins: 89, leaves: 23,
   }));
 
-  // Growth
   console.log('m?growth...');
   const growthData = Array.from({ length: 30 }, (_, i) => ({
     date: `2026-08-${String(i + 1).padStart(2, '0')}`,
-    joins: Math.floor(Math.random() * 8) + 1,
-    leaves: Math.floor(Math.random() * 3),
+    joins: Math.floor(Math.random() * 8) + 1, leaves: Math.floor(Math.random() * 3),
     net: 0, total: 1200 + i * 2,
   }));
   growthData.forEach(g => g.net = g.joins - g.leaves);
@@ -164,53 +133,38 @@ async function main() {
     dailyGrowth: growthData, totalJoins: 89, totalLeaves: 23,
   }));
 
-  // Compare
   console.log('m?compare...');
   writeFileSync('/tmp/test-compare.png', await renderCompare(
     { label: 'Last 14 Days', messages: 82492, activeUsers: 347, voiceHours: 126.9, joins: 45, leaves: 12, peakHour: '21:00' },
     { label: 'Previous 14 Days', messages: 71883, activeUsers: 312, voiceHours: 112.4, joins: 38, leaves: 18, peakHour: '20:00' },
   ));
 
-  // Weekly Report
   console.log('m?weekly...');
   writeFileSync('/tmp/test-weekly.png', await renderReport({
-    type: 'weekly',
-    guildName: '/marlboro social', period: 'Aug 25 – Aug 31, 2026',
+    type: 'weekly', guildName: '/marlboro social', period: 'Aug 25 – Aug 31, 2026',
     totalMessages: 18420, totalVoiceMs: 98760000, activeUsers: 234,
     joins: 12, leaves: 3, peakHour: '21:00',
     topUsers: [
-      { userId: 'bunnycatdpg', messages: 1890 },
-      { userId: 'ninqz', messages: 1420 },
-      { userId: 'semeiological', messages: 1380 },
-      { userId: 'astroboy', messages: 1210 },
+      { userId: 'bunnycatdpg', messages: 1890 }, { userId: 'ninqz', messages: 1420 },
+      { userId: 'semeiological', messages: 1380 }, { userId: 'astroboy', messages: 1210 },
       { userId: 'moonlight', messages: 1150 },
     ],
     topChannels: [
-      { name: 'chat', messages: 8900 },
-      { name: 'general', messages: 4200 },
-      { name: 'media', messages: 2100 },
-      { name: 'gaming', messages: 1800 },
+      { name: 'chat', messages: 8900 }, { name: 'general', messages: 4200 },
+      { name: 'media', messages: 2100 }, { name: 'gaming', messages: 1800 },
     ],
     dailyMessages: Array.from({ length: 7 }, () => Math.floor(2200 + Math.random() * 800)),
     previousMessages: 16200,
   }));
 
-  // === FAKE DEMO IMAGES ===
   console.log('m?fake (server)...');
-  const fakeServer = generateFakeServer();
-  writeFileSync('/tmp/test-fake-server.png', await renderFakeServerStats(fakeServer));
-
+  writeFileSync('/tmp/test-fake-server.png', await renderFakeServerStats(generateFakeServer()));
   console.log('m?fake user...');
-  const fakeUser = generateFakeUser();
-  writeFileSync('/tmp/test-fake-user.png', await renderFakeUserStats(fakeUser));
-
+  writeFileSync('/tmp/test-fake-user.png', await renderFakeUserStats(generateFakeUser()));
   console.log('m?fake weekly...');
-  const fakeWeekly = generateFakeReport('weekly');
-  writeFileSync('/tmp/test-fake-weekly.png', await renderFakeReport(fakeWeekly));
-
+  writeFileSync('/tmp/test-fake-weekly.png', await renderFakeReport(generateFakeReport('weekly')));
   console.log('m?fake monthly...');
-  const fakeMonthly = generateFakeReport('monthly');
-  writeFileSync('/tmp/test-fake-monthly.png', await renderFakeReport(fakeMonthly));
+  writeFileSync('/tmp/test-fake-monthly.png', await renderFakeReport(generateFakeReport('monthly')));
 
   console.log('Done!');
 }

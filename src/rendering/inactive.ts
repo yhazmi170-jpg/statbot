@@ -1,69 +1,48 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, fillRect, text, truncate, numStr, durStr } from './theme.js';
-import { headerBanner, sectionBg, footer } from './components.js';
+import { T, W, H, PAD, GAP, fillRect, text, truncate, numStr, durStr } from './theme.js';
+import { headerBanner, panelBg, footer } from './components.js';
 
-interface InactiveUser {
-  userId: string;
-  lastActivity: string;
-  messages: number;
-  voiceMs: number;
-}
+interface InactiveUser { userId: string; lastActivity: string; messages: number; voiceMs: number; }
 
 export async function renderInactive(guildName: string, days: number, users: InactiveUser[]): Promise<Buffer> {
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
-
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  let y = PAD;
-
-  headerBanner(ctx, y, 'Inactive Members', `${guildName} • No activity in ${days} days`, {
-    rightLabel: 'Inactive Users',
-    rightValue: numStr(users.length),
+  headerBanner(ctx, 'Inactive Members', `${guildName} • No activity in ${days} days`, {
+    rightLabel: 'Inactive Users', rightValue: numStr(users.length),
   });
-  y += 78;
 
-  // Table
-  const tableH = H - y - PAD - 44;
-  sectionBg(ctx, PAD, y, W - PAD * 2, tableH);
+  const tableY = PAD + 75 + 15;
+  const tableH = H - tableY - PAD - 25;
+  panelBg(ctx, { x: PAD, y: tableY, w: W - PAD * 2, h: tableH });
 
-  // Column widths
-  const colRank = 50;
-  const colUser = 300;
-  const colLast = 200;
-  const colMsgs = 200;
-  const colVoice = 200;
-  const tableX = PAD;
+  const colRank = 60;
+  const colUser = 320;
+  const colLast = 240;
+  const colMsgs = 240;
+  const colVoice = 240;
 
-  // Header row
-  fillRect(ctx, tableX, y, W - PAD * 2, 36, T.panelAlt, 0);
-  text(ctx, '#', tableX + 16, y + 10, { size: 11, weight: 700, color: T.textDim });
-  text(ctx, 'USER', tableX + colRank + 16, y + 10, { size: 11, weight: 700, color: T.textDim });
-  text(ctx, 'LAST ACTIVE', tableX + colRank + colUser + 16, y + 10, { size: 11, weight: 700, color: T.textDim });
-  text(ctx, 'MESSAGES', tableX + colRank + colUser + colLast + 16, y + 10, { size: 11, weight: 700, color: T.textDim });
-  text(ctx, 'VOICE', tableX + colRank + colUser + colLast + colMsgs + 16, y + 10, { size: 11, weight: 700, color: T.textDim });
-  y += 38;
+  fillRect(ctx, PAD, tableY, W - PAD * 2, 40, T.panelAlt, 0);
+  text(ctx, '#', PAD + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
+  text(ctx, 'USER', PAD + colRank + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
+  text(ctx, 'LAST ACTIVE', PAD + colRank + colUser + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
+  text(ctx, 'MESSAGES', PAD + colRank + colUser + colLast + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
+  text(ctx, 'VOICE', PAD + colRank + colUser + colLast + colMsgs + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
 
-  const maxRows = Math.floor((tableH - 42) / 38);
+  const maxRows = Math.floor((tableH - 48) / 40);
   for (let i = 0; i < Math.min(users.length, maxRows); i++) {
-    const ry = y + i * 38;
+    const ry = tableY + 44 + i * 40;
     const u = users[i];
-
-    if (i % 2 === 0) fillRect(ctx, tableX, ry, W - PAD * 2, 38, T.row, 0);
-
-    text(ctx, String(i + 1).padStart(2, ' '), tableX + 16, ry + 10, { size: 14, weight: 700, color: T.textDim });
-    fillRect(ctx, tableX + colRank + 16, ry + 6, 26, 26, T.accentSoft, 13);
-    text(ctx, truncate(ctx, u.userId, colUser - 50, { size: 13 }), tableX + colRank + 48, ry + 10, { size: 13, color: T.text });
-    text(ctx, u.lastActivity, tableX + colRank + colUser + 16, ry + 10, { size: 12, color: T.textMuted });
-    text(ctx, numStr(u.messages), tableX + colRank + colUser + colLast + 16, ry + 10, { size: 13, color: T.text });
-    text(ctx, durStr(u.voiceMs), tableX + colRank + colUser + colLast + colMsgs + 16, ry + 10, { size: 13, color: T.text });
-
-    if (i < Math.min(users.length, maxRows) - 1) {
-      fillRect(ctx, tableX + 16, ry + 37, W - PAD * 2 - 32, 1, T.border);
-    }
+    if (i % 2 === 0) fillRect(ctx, PAD, ry, W - PAD * 2, 40, T.row, 0);
+    text(ctx, String(i + 1).padStart(2, ' '), PAD + 16, ry + 10, { size: 16, weight: 700, color: T.textDim });
+    fillRect(ctx, PAD + colRank + 16, ry + 6, 28, 28, T.accentSoft, 14);
+    text(ctx, truncate(ctx, u.userId, colUser - 50, { size: 14 }), PAD + colRank + 50, ry + 10, { size: 14, color: T.text });
+    text(ctx, u.lastActivity, PAD + colRank + colUser + 16, ry + 10, { size: 13, weight: 500, color: T.textMuted });
+    text(ctx, numStr(u.messages), PAD + colRank + colUser + colLast + 16, ry + 10, { size: 14, color: T.text });
+    text(ctx, durStr(u.voiceMs), PAD + colRank + colUser + colLast + colMsgs + 16, ry + 10, { size: 14, color: T.text });
   }
 
   footer(ctx, 'StatBot  •  m?help for commands');
-
   return canvas.toBuffer('image/png');
 }

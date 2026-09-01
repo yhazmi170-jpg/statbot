@@ -54,8 +54,6 @@ model Channel {
   guildId   String
   createdAt DateTime  @default(now())
 
-  dailyStats ChannelStats[]
-
   @@index([guildId])
   @@index([id])
 }
@@ -119,7 +117,6 @@ model ChannelStats {
   voiceMs       BigInt   @default(0)
 
   guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  channel       Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([guildId, channelId, date])
   @@index([guildId, channelId, date])
