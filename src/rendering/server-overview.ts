@@ -17,7 +17,6 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
     rightLabel: 'Members', rightValue: numStr(d.guild.memberCount),
   });
 
-  // Info cards row
   const infoItems = [
     { label: 'Channels', value: String(d.guild.channelCount) },
     { label: 'Roles', value: String(d.guild.roleCount) },
@@ -29,13 +28,13 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
   for (let i = 0; i < infoItems.length; i++) {
     const ix = PAD + i * (infoW + GAP);
     fillRect(ctx, ix, infoY, infoW, 60, T.panel, 12);
-    fillRect(ctx, ix, infoY, infoW, 1, T.border);
-    fillRect(ctx, ix, infoY, infoW, 3, T.accent);
+    ctx.strokeStyle = T.border;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ix, infoY, infoW, 60);
     text(ctx, infoItems[i].label.toUpperCase(), ix + 14, infoY + 10, { size: 13, weight: 700, color: T.textDim });
     text(ctx, infoItems[i].value, ix + 14, infoY + 30, { size: 24, weight: 700, color: T.text });
   }
 
-  // 4 panels
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
   panelHeader(ctx, tl, 'Activity');
@@ -49,7 +48,7 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
     text(ctx, label.toUpperCase(), tl.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
     text(ctx, value, tl.x + tl.w - 16, ry, { size: 18, weight: 700, color: T.text, align: 'right' });
     ry += 38;
-    fillRect(ctx, tl.x + 16, ry - 8, tl.w - 32, 1, T.border);
+    fillRect(ctx, tl.x + 16, ry - 8, tl.w - 32, 1, T.borderSubtle);
   }
 
   const tr = PANELS.topRight;
@@ -67,7 +66,7 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
     text(ctx, item.label.toUpperCase(), tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
     text(ctx, item.value, tr.x + tr.w - 16, ry, { size: 18, weight: 700, color: item.color, align: 'right' });
     ry += 38;
-    fillRect(ctx, tr.x + 16, ry - 8, tr.w - 32, 1, T.border);
+    fillRect(ctx, tr.x + 16, ry - 8, tr.w - 32, 1, T.borderSubtle);
   }
 
   const bl = PANELS.bottomLeft;
@@ -83,7 +82,7 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
     text(ctx, item.label.toUpperCase(), bl.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
     text(ctx, item.value, bl.x + bl.w - 16, ry, { size: 18, weight: 700, color: T.text, align: 'right' });
     ry += 38;
-    fillRect(ctx, bl.x + 16, ry - 8, bl.w - 32, 1, T.border);
+    fillRect(ctx, bl.x + 16, ry - 8, bl.w - 32, 1, T.borderSubtle);
   }
 
   const br = PANELS.bottomRight;
@@ -99,7 +98,7 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
     text(ctx, item.label.toUpperCase(), br.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
     text(ctx, item.value, br.x + br.w - 16, ry, { size: 18, weight: 700, color: T.text, align: 'right' });
     ry += 38;
-    fillRect(ctx, br.x + 16, ry - 8, br.w - 32, 1, T.border);
+    fillRect(ctx, br.x + 16, ry - 8, br.w - 32, 1, T.borderSubtle);
   }
 
   footer(ctx, 'StatBot  •  m?help for commands');

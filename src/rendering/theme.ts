@@ -15,15 +15,21 @@ export const THEME = {
   gap: 20,
 
   colors: {
-    bg: '#0a0a0c',
-    panelBg: '#121216',
-    panelBorder: '#22222a',
-    accent: '#9e1b1b',
-    accentGlow: 'rgba(158, 27, 27, 0.15)',
-    textPrimary: '#ffffff',
-    textSecondary: '#8a8f9d',
-    textMuted: '#525660',
-    gridLines: '#1d1d24',
+    bg: '#09090b',
+    cardBg: '#121215',
+    cardBgHover: '#16161a',
+    border: '#27272a',
+    borderSubtle: '#1f1f23',
+    accent: '#dc2626',
+    accentDim: '#991b1b',
+    accentGlow: 'rgba(220, 38, 38, 0.12)',
+    textPrimary: '#fafafa',
+    textSecondary: '#a1a1aa',
+    textMuted: '#71717a',
+    textDim: '#52525b',
+    gridLines: '#1e1e24',
+    chartLine: '#dc2626',
+    chartFill: 'rgba(220, 38, 38, 0.15)',
   },
 
   fonts: {
@@ -38,7 +44,7 @@ export const THEME = {
     tiny: '500 11px Inter',
   },
 
-  borderRadius: 12,
+  borderRadius: 10,
 } as const;
 
 // ─── LAYOUT CONSTANTS ──────────────────────────────────
@@ -53,7 +59,7 @@ export const STAT_H = 110;
 export const STAT_W = (W - PAD * 2 - GAP * 4) / 5;
 
 // Main content grid
-export const GRID_TOP = PAD + 75 + 15 + STAT_H + 15; // header + gap + stat row + gap
+export const GRID_TOP = PAD + 75 + 15 + STAT_H + 15;
 export const PANEL_W = (W - PAD * 2 - GAP) / 2;
 export const PANEL_H = (H - GRID_TOP - PAD - 25) / 2;
 
@@ -71,41 +77,44 @@ export const T = {
   W, H, PAD,
 
   bg: THEME.colors.bg,
-  panel: THEME.colors.panelBg,
-  panelAlt: '#16161b',
-  row: '#0f0f13',
-  rowAlt: '#141418',
+  panel: THEME.colors.cardBg,
+  panelAlt: '#16161a',
+  row: '#0e0e11',
+  rowAlt: '#131316',
 
-  border: THEME.colors.panelBorder,
-  borderLight: '#2a2a34',
+  border: THEME.colors.border,
+  borderLight: '#2a2a2e',
+  borderSubtle: THEME.colors.borderSubtle,
 
   text: THEME.colors.textPrimary,
-  textMuted: THEME.colors.textSecondary,
-  textDim: THEME.colors.textMuted,
-  textFaint: '#3a3d45',
+  textSecondary: THEME.colors.textSecondary,
+  textMuted: THEME.colors.textMuted,
+  textDim: THEME.colors.textDim,
+  textFaint: '#3f3f46',
 
   accent: THEME.colors.accent,
-  accentBright: '#c42020',
-  accentSoft: '#6e1212',
+  accentBright: '#ef4444',
+  accentSoft: '#991b1b',
+  accentDim: '#7f1d1d',
   accentBg: THEME.colors.accentGlow,
 
-  green: '#3a8a3a',
-  greenSoft: '#2d6e2d',
-  red: '#9e1b1b',
-  redSoft: '#7a1414',
-  yellow: '#c9a84c',
+  green: '#22c55e',
+  greenSoft: '#16a34a',
+  red: '#dc2626',
+  redSoft: '#991b1b',
+  yellow: '#eab308',
 
-  chartLine: '#c42020',
-  chartFill: 'rgba(158, 27, 27, 0.18)',
+  chartLine: THEME.colors.chartLine,
+  chartFill: THEME.colors.chartFill,
   chartGrid: THEME.colors.gridLines,
-  chartText: '#525660',
+  chartText: '#71717a',
 
-  heat0: '#18181f',
-  heat1: '#4a0e0e',
-  heat2: '#7a1414',
-  heat3: '#ab1a1a',
-  heat4: '#c42020',
-  heat5: '#e62b2b',
+  heat0: '#18181b',
+  heat1: '#450a0a',
+  heat2: '#7f1d1d',
+  heat3: '#991b1b',
+  heat4: '#dc2626',
+  heat5: '#ef4444',
 } as const;
 
 // ─── EXPORTS ───────────────────────────────────────────

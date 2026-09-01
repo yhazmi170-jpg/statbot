@@ -12,8 +12,7 @@ export async function renderFakeServerStats(d: FakeServerData): Promise<Buffer> 
     rightLabel: 'Total Messages', rightValue: numStr(d.totalMessages),
   });
 
-  // Demo label
-  fillRect(ctx, PAD, PAD + 75 + 8, W - PAD * 2, 30, 'rgba(158,27,27,0.15)', 8);
+  fillRect(ctx, PAD, PAD + 75 + 8, W - PAD * 2, 30, 'rgba(220,38,38,0.08)', 8);
   text(ctx, 'FICTIONAL DATA  •  DEMO', PAD + 16, PAD + 75 + 14, { size: 13, weight: 700, color: T.accentBright });
 
   const stats = [
@@ -42,7 +41,7 @@ export async function renderFakeServerStats(d: FakeServerData): Promise<Buffer> 
     const ry = panelContentY(tr) + i * userRowH;
     const u = d.topUsers[i];
     const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1, rankColor,
       label: truncate(ctx, u.userId, tr.w - 180, { size: 16 }),
@@ -60,7 +59,7 @@ export async function renderFakeServerStats(d: FakeServerData): Promise<Buffer> 
     const ry = panelContentY(bl) + i * chRowH;
     const ch = d.topChannels[i];
     const pct = maxCh > 0 ? ch.messages / maxCh : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, bl.x, ry, bl.w, chRowH, {
       rank: i + 1, rankColor,
       label: '#' + truncate(ctx, ch.channelId, bl.w - 180, { size: 16 }),

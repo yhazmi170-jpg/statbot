@@ -23,7 +23,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
     const ry = panelContentY(tl) + i * rowH;
     const u = users[i];
     const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, tl.x, ry, tl.w, rowH, {
       rank: i + 1, rankColor,
       label: truncate(ctx, u.userId, tl.w - 180, { size: 16 }),
@@ -42,25 +42,24 @@ export async function renderTopUsers(guildName: string, period: string, users: R
 
   let ry = panelContentY(tr) + 4;
   text(ctx, 'TOP USER', tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim }); ry += 20;
-  text(ctx, truncate(ctx, topUser?.userId || '—', tr.w - 40, { size: 22 }), tr.x + 16, ry, { size: 22, weight: 700, color: T.accentBright }); ry += 28;
+  text(ctx, truncate(ctx, topUser?.userId || '—', tr.w - 40, { size: 22 }), tr.x + 16, ry, { size: 22, weight: 700, color: T.text }); ry += 28;
   text(ctx, `${numStr(topUser?.messages || 0)} messages  •  ${topShare}% of total`, tr.x + 16, ry, { size: 14, weight: 500, color: T.textMuted }); ry += 32;
-  fillRect(ctx, tr.x + 16, ry, tr.w - 32, 1, T.border); ry += 16;
+  fillRect(ctx, tr.x + 16, ry, tr.w - 32, 1, T.borderSubtle); ry += 16;
 
   text(ctx, 'AVERAGE PER USER', tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim }); ry += 20;
   text(ctx, `${numStr(avg)} messages`, tr.x + 16, ry, { size: 20, weight: 700, color: T.text }); ry += 32;
-  fillRect(ctx, tr.x + 16, ry, tr.w - 32, 1, T.border); ry += 16;
+  fillRect(ctx, tr.x + 16, ry, tr.w - 32, 1, T.borderSubtle); ry += 16;
 
   if (voiceTop.length > 0) {
     text(ctx, 'TOP VOICE', tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim }); ry += 24;
     for (const u of voiceTop) {
-      fillRect(ctx, tr.x + 16, ry, 28, 28, T.accentSoft, 14);
+      fillRect(ctx, tr.x + 16, ry, 28, 28, T.accentDim, 14);
       text(ctx, truncate(ctx, u.userId, tr.w - 140, { size: 14 }), tr.x + 50, ry + 4, { size: 14, weight: 500, color: T.text });
-      text(ctx, durStr(u.voiceMs), tr.x + tr.w - 16, ry + 4, { size: 14, weight: 600, color: T.accent, align: 'right' });
+      text(ctx, durStr(u.voiceMs), tr.x + tr.w - 16, ry + 4, { size: 14, weight: 600, color: T.accentBright, align: 'right' });
       ry += 32;
     }
   }
 
-  // Full-width bottom panels
   const bl = PANELS.bottomLeft;
   const br = PANELS.bottomRight;
   const fullW = bl.w + GAP + br.w;
@@ -71,8 +70,8 @@ export async function renderTopUsers(guildName: string, period: string, users: R
   let barX = bl.x + 16;
   const barW = fullW - 32;
   const barH = 40;
-  fillRect(ctx, barX, pctBarY + 28, barW, barH, T.panelAlt, 6);
-  const colors = [T.accentBright, T.accent, T.accentSoft, '#5a1212', '#3d0c0c', '#2a0808', '#1d0505', '#140303'];
+  fillRect(ctx, barX, pctBarY + 28, barW, barH, T.row, 6);
+  const colors = [T.accentBright, '#991b1b', '#7f1d1d', '#52525b', '#3f3f46', '#27272a', '#1f1f23', '#18181b'];
   for (let i = 0; i < Math.min(users.length, 8); i++) {
     const w = totalMsgs > 0 ? (users[i].messages / totalMsgs) * barW : 0;
     fillRect(ctx, barX, pctBarY + 28, w, barH, colors[i % colors.length], i === 0 ? 6 : 0);

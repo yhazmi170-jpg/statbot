@@ -59,16 +59,14 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     voiceMs: c.voiceMs || 0,
   }));
 
-  // ─── HEADER ─────────────────────────────────────────
+  // Header with avatar
   fillRect(ctx, PAD, PAD, W - PAD * 2, 80, T.panel, THEME.borderRadius);
-  fillRect(ctx, PAD, PAD, W - PAD * 2, 1, T.accent);
-  fillRect(ctx, PAD, PAD, W - PAD * 2, 3, T.accent);
 
   const avatarSize = 56;
   const avatarX = PAD + 20;
   const avatarY = PAD + 12;
-  fillRect(ctx, avatarX, avatarY, avatarSize, avatarSize, T.accentSoft, avatarSize / 2);
-  text(ctx, username.charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2 - 12, { size: 26, weight: 700, color: T.accentBright, align: 'center' });
+  fillRect(ctx, avatarX, avatarY, avatarSize, avatarSize, T.accentDim, avatarSize / 2);
+  text(ctx, username.charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2 - 12, { size: 26, weight: 700, color: T.text, align: 'center' });
 
   const textX = avatarX + avatarSize + 16;
   text(ctx, truncate(ctx, username, 300, { size: 28 }), textX, PAD + 16, { size: 28, weight: 700, color: T.text });
@@ -77,7 +75,6 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   text(ctx, `#${d.rank}`, W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
   text(ctx, `of ${numStr(totalUsers)} users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });
 
-  // ─── STAT CARDS ─────────────────────────────────────
   const stats = [
     { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
     { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
@@ -89,7 +86,6 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
   }
 
-  // ─── PANELS ─────────────────────────────────────────
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
   panelHeader(ctx, tl, 'Activity by Hour');
@@ -126,7 +122,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
       const ch = topChannels[idx];
       const ry = panelContentY(bl) + i * chRowH;
       const pct = maxCh > 0 ? ch.messages / maxCh : 0;
-      const rankColor = idx === 0 ? T.accentBright : idx === 1 ? T.accent : idx === 2 ? T.accentSoft : T.textDim;
+      const rankColor = idx === 0 ? T.accentBright : idx === 1 ? T.textSecondary : idx === 2 ? T.textMuted : T.textDim;
       rowItem(ctx, cx, ry, chColW, chRowH, {
         rank: idx + 1,
         rankColor,

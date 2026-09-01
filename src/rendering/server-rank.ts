@@ -17,7 +17,7 @@ export async function renderServerRank(guildName: string, users: RankUser[], tot
   const tableH = H - tableY - PAD - 25;
   panelBg(ctx, { x: PAD, y: tableY, w: W - PAD * 2, h: tableH });
 
-  fillRect(ctx, PAD, tableY, W - PAD * 2, 40, T.panelAlt, 0);
+  fillRect(ctx, PAD, tableY, W - PAD * 2, 40, '#16161a', 0);
   text(ctx, '#', PAD + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
   text(ctx, 'USER', PAD + 60, tableY + 12, { size: 13, weight: 700, color: T.textDim });
   text(ctx, 'SCORE', PAD + 440, tableY + 12, { size: 13, weight: 700, color: T.textDim });
@@ -33,12 +33,12 @@ export async function renderServerRank(guildName: string, users: RankUser[], tot
     const u = users[i];
     if (i % 2 === 0) fillRect(ctx, PAD, ry, W - PAD * 2, 42, T.row, 0);
 
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     text(ctx, String(i + 1).padStart(2, ' '), PAD + 16, ry + 10, { size: 18, weight: 700, color: rankColor });
-    fillRect(ctx, PAD + 60, ry + 6, 30, 30, [T.accentBright, T.accent, T.accentSoft, '#5a1212', '#3d0c0c'][i % 5], 15);
+    fillRect(ctx, PAD + 60, ry + 6, 30, 30, [T.accentBright, T.textSecondary, T.textMuted, T.textDim, '#3f3f46'][i % 5], 15);
     text(ctx, truncate(ctx, u.userId, 300, { size: 14 }), PAD + 96, ry + 10, { size: 14, color: T.text });
 
-    fillRect(ctx, PAD + 260, ry + 16, 160, 8, T.panelAlt, 4);
+    fillRect(ctx, PAD + 260, ry + 16, 160, 8, T.row, 4);
     const pct = maxScore > 0 ? u.score / maxScore : 0;
     fillRect(ctx, PAD + 260, ry + 16, Math.max(160 * pct, 8), 8, T.accent, 4);
 

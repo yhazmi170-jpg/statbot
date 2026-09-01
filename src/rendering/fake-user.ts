@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, truncate, numStr } from './theme.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, truncate, numStr, THEME } from './theme.js';
 import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer } from './components.js';
 import type { FakeUserData } from '../fake/generator.js';
 
@@ -8,18 +8,16 @@ export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
   const ctx = canvas.getContext('2d');
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  fillRect(ctx, PAD, PAD, W - PAD * 2, 80, T.panel, 12);
-  fillRect(ctx, PAD, PAD, W - PAD * 2, 3, T.accent);
+  fillRect(ctx, PAD, PAD, W - PAD * 2, 80, T.panel, THEME.borderRadius);
   const avatarSize = 56;
-  fillRect(ctx, PAD + 20, PAD + 12, avatarSize, avatarSize, T.accentSoft, avatarSize / 2);
-  text(ctx, d.username.charAt(0).toUpperCase(), PAD + 20 + avatarSize / 2, PAD + 12 + avatarSize / 2 - 12, { size: 26, weight: 700, color: T.accentBright, align: 'center' });
+  fillRect(ctx, PAD + 20, PAD + 12, avatarSize, avatarSize, T.accentDim, avatarSize / 2);
+  text(ctx, d.username.charAt(0).toUpperCase(), PAD + 20 + avatarSize / 2, PAD + 12 + avatarSize / 2 - 12, { size: 26, weight: 700, color: T.text, align: 'center' });
   text(ctx, d.username, PAD + 20 + avatarSize + 16, PAD + 16, { size: 28, weight: 700, color: T.text });
   text(ctx, 'Last 30 Days', PAD + 20 + avatarSize + 16, PAD + 48, { size: 16, weight: 500, color: T.textMuted });
   text(ctx, `#${d.rank}`, W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
   text(ctx, `of ${numStr(d.totalMembers)} users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });
 
-  // Demo label
-  fillRect(ctx, PAD, PAD + 75 + 8, W - PAD * 2, 30, 'rgba(158,27,27,0.15)', 8);
+  fillRect(ctx, PAD, PAD + 75 + 8, W - PAD * 2, 30, 'rgba(220,38,38,0.08)', 8);
   text(ctx, 'FICTIONAL DATA  •  DEMO', PAD + 16, PAD + 75 + 14, { size: 13, weight: 700, color: T.accentBright });
 
   const stats = [
@@ -57,7 +55,7 @@ export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
     const ry = panelContentY(bl) + i * chRowH;
     const ch = d.topChannels[i];
     const pct = maxCh > 0 ? ch.messages / maxCh : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, bl.x, ry, fullW, chRowH, {
       rank: i + 1, rankColor,
       label: '#' + truncate(ctx, ch.channelId, fullW - 180, { size: 16 }),

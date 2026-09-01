@@ -55,13 +55,11 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     voiceMs: c.voiceMs || 0,
   }));
 
-  // ─── HEADER (y: 32, h: 75) ──────────────────────────
   headerBanner(ctx, 'StatBot', `${guildName} • ${period}`, {
     rightLabel: 'Total Messages',
     rightValue: numStr(totalMessages),
   });
 
-  // ─── STAT CARDS (y: 120, h: 110, each 251px wide) ───
   const peak = hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 });
   const stats = [
     { label: 'Messages', value: numStr(totalMessages), color: T.accentBright },
@@ -74,9 +72,6 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
   }
 
-  // ─── PANELS (4 panels: 642×290 each) ────────────────
-
-  // TOP LEFT: Message Activity
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
   panelHeader(ctx, tl, 'Message Activity', 'Last 7 Days');
@@ -86,7 +81,6 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
       showValues: true,
     });
 
-  // TOP RIGHT: Top Users
   const tr = PANELS.topRight;
   panelBg(ctx, tr);
   panelHeader(ctx, tr, 'Top Users', `${d.topUsers.length} users`);
@@ -96,7 +90,7 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     const ry = panelContentY(tr) + i * userRowH;
     const u = d.topUsers[i];
     const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1,
       rankColor,
@@ -107,7 +101,6 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     });
   }
 
-  // BOTTOM LEFT: Top Channels
   const bl = PANELS.bottomLeft;
   panelBg(ctx, bl);
   panelHeader(ctx, bl, 'Top Channels', `${topChannels.length} channels`);
@@ -117,7 +110,7 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     const ry = panelContentY(bl) + i * chRowH;
     const ch = topChannels[i];
     const pct = maxCh > 0 ? ch.messages / maxCh : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, bl.x, ry, bl.w, chRowH, {
       rank: i + 1,
       rankColor,
@@ -128,13 +121,11 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     });
   }
 
-  // BOTTOM RIGHT: Heatmap
   const br = PANELS.bottomRight;
   panelBg(ctx, br);
   panelHeader(ctx, br, 'Activity Heatmap', 'Hourly Activity');
   heatmap(ctx, br.x + 16, panelContentY(br), br.w - 32, br.h - 55, heatmapGrid);
 
-  // ─── FOOTER ─────────────────────────────────────────
   footer(ctx, 'StatBot  •  m?help for commands');
 
   return canvas.toBuffer('image/png');

@@ -23,7 +23,7 @@ export async function renderInactive(guildName: string, days: number, users: Ina
   const colMsgs = 240;
   const colVoice = 240;
 
-  fillRect(ctx, PAD, tableY, W - PAD * 2, 40, T.panelAlt, 0);
+  fillRect(ctx, PAD, tableY, W - PAD * 2, 40, '#16161a', 0);
   text(ctx, '#', PAD + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
   text(ctx, 'USER', PAD + colRank + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
   text(ctx, 'LAST ACTIVE', PAD + colRank + colUser + 16, tableY + 12, { size: 13, weight: 700, color: T.textDim });
@@ -36,7 +36,7 @@ export async function renderInactive(guildName: string, days: number, users: Ina
     const u = users[i];
     if (i % 2 === 0) fillRect(ctx, PAD, ry, W - PAD * 2, 40, T.row, 0);
     text(ctx, String(i + 1).padStart(2, ' '), PAD + 16, ry + 10, { size: 16, weight: 700, color: T.textDim });
-    fillRect(ctx, PAD + colRank + 16, ry + 6, 28, 28, T.accentSoft, 14);
+    fillRect(ctx, PAD + colRank + 16, ry + 6, 28, 28, T.accentDim, 14);
     text(ctx, truncate(ctx, u.userId, colUser - 50, { size: 14 }), PAD + colRank + 50, ry + 10, { size: 14, color: T.text });
     text(ctx, u.lastActivity, PAD + colRank + colUser + 16, ry + 10, { size: 13, weight: 500, color: T.textMuted });
     text(ctx, numStr(u.messages), PAD + colRank + colUser + colLast + 16, ry + 10, { size: 14, color: T.text });

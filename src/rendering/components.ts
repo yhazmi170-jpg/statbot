@@ -3,6 +3,33 @@ import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, 
 export { COL_GAP, PANEL_W, PANEL_H, PANELS, GRID_TOP, STAT_W, STAT_H, GAP };
 export const HALF_W = PANEL_W;
 
+// ─── CARD DRAWING ──────────────────────────────────────
+
+function drawCard(ctx: any, x: number, y: number, w: number, h: number, opts?: {
+  accentTop?: boolean;
+  accentColor?: string;
+  subtle?: boolean;
+}) {
+  // Card background
+  fillRect(ctx, x, y, w, h, opts?.subtle ? '#0e0e11' : T.panel, THEME.borderRadius);
+
+  // Subtle border
+  fillRect(ctx, x, y, w, h, 'transparent', THEME.borderRadius);
+  ctx.strokeStyle = T.border;
+  ctx.lineWidth = 1;
+  rr(ctx, x, y, w, h, THEME.borderRadius);
+  ctx.stroke();
+
+  // Optional accent top line (very subtle)
+  if (opts?.accentTop) {
+    ctx.save();
+    rr(ctx, x, y, w, h, THEME.borderRadius);
+    ctx.clip();
+    fillRect(ctx, x, y, w, 2, opts?.accentColor || T.accent, 0);
+    ctx.restore();
+  }
+}
+
 // ─── HEADER ────────────────────────────────────────────
 
 export function headerBanner(ctx: any, title: string, subtitle: string, opts?: {
@@ -11,16 +38,9 @@ export function headerBanner(ctx: any, title: string, subtitle: string, opts?: {
   const y = PAD;
   const h = 75;
 
-  fillRect(ctx, PAD, y, W - PAD * 2, h, T.panel, THEME.borderRadius);
-  fillRect(ctx, PAD, y, W - PAD * 2, 1, T.accent);
+  drawCard(ctx, PAD, y, W - PAD * 2, h);
 
-  ctx.save();
-  rr(ctx, PAD, y, W - PAD * 2, h, THEME.borderRadius);
-  ctx.clip();
-  fillRect(ctx, PAD, y, W - PAD * 2, h, T.panel, 0);
-  ctx.restore();
-
-  text(ctx, title.toUpperCase(), PAD + 20, y + 18, { size: 36, weight: 700, color: T.accentBright });
+  text(ctx, title.toUpperCase(), PAD + 20, y + 20, { size: 36, weight: 700, color: T.text });
   text(ctx, subtitle, PAD + 20, y + 50, { size: 18, weight: 500, color: T.textMuted });
 
   if (opts?.rightLabel && opts?.rightValue) {
@@ -37,32 +57,31 @@ export function statCard(ctx: any, index: number, label: string, value: string, 
   const w = STAT_W;
   const h = STAT_H;
 
-  fillRect(ctx, x, y, w, h, T.panel, THEME.borderRadius);
-  fillRect(ctx, x, y, w, 1, T.border);
-  fillRect(ctx, x, y, w, 3, accentColor || T.accent);
+  drawCard(ctx, x, y, w, h, { accentTop: true, accentColor });
 
-  text(ctx, label.toUpperCase(), x + 16, y + 16, { size: 13, weight: 700, color: T.textDim });
-  text(ctx, value, x + 16, y + 48, { size: 44, weight: 700, color: accentColor || T.text });
+  text(ctx, label.toUpperCase(), x + 16, y + 18, { size: 13, weight: 700, color: T.textDim });
+  text(ctx, value, x + 16, y + 46, { size: 44, weight: 700, color: T.text });
 }
 
 // ─── PANELS ────────────────────────────────────────────
 
 export function panelBg(ctx: any, pos: { x: number; y: number; w: number; h: number }) {
-  fillRect(ctx, pos.x, pos.y, pos.w, pos.h, T.panel, THEME.borderRadius);
-  fillRect(ctx, pos.x, pos.y, pos.w, 1, T.border);
+  drawCard(ctx, pos.x, pos.y, pos.w, pos.h);
 }
 
 export function panelHeader(ctx: any, pos: { x: number; y: number; w: number }, title: string, subtitle?: string) {
   const headerH = 40;
-  fillRect(ctx, pos.x, pos.y, pos.w, headerH, T.panelAlt, 0);
+
   ctx.save();
   rr(ctx, pos.x, pos.y, pos.w, headerH, THEME.borderRadius);
   ctx.clip();
-  fillRect(ctx, pos.x, pos.y, pos.w, headerH, T.panelAlt, 0);
+  fillRect(ctx, pos.x, pos.y, pos.w, headerH, '#16161a', 0);
   ctx.restore();
-  fillRect(ctx, pos.x, pos.y + headerH - 1, pos.w, 1, T.border);
 
-  text(ctx, title.toUpperCase(), pos.x + 16, pos.y + 10, { size: 20, weight: 700, color: T.accentBright });
+  // Separator
+  fillRect(ctx, pos.x, pos.y + headerH - 1, pos.w, 1, T.borderSubtle);
+
+  text(ctx, title.toUpperCase(), pos.x + 16, pos.y + 11, { size: 20, weight: 700, color: T.text });
   if (subtitle) {
     text(ctx, subtitle, pos.x + 16, pos.y + 28, { size: 11, weight: 500, color: T.textDim });
   }
@@ -79,7 +98,7 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
   barPct?: number; isLast?: boolean;
 }) {
   if (!opts.isLast) {
-    fillRect(ctx, x, y + h - 1, w, 1, T.border);
+    fillRect(ctx, x, y + h - 1, w, 1, T.borderSubtle);
   }
 
   const rankX = x + 12;
@@ -97,9 +116,17 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
     const barX = nameX;
     const barW = w - nameX - 16 - 100;
     const barY = y + h / 2 + 10;
-    fillRect(ctx, barX, barY, barW, 4, T.panelAlt, 2);
+    fillRect(ctx, barX, barY, barW, 4, '#1e1e24', 2);
     fillRect(ctx, barX, barY, Math.max(barW * opts.barPct, 4), 4, T.accent, 2);
   }
+}
+
+// ─── EMPTY STATE ───────────────────────────────────────
+
+export function emptyState(ctx: any, x: number, y: number, w: number, h: number, message?: string) {
+  text(ctx, message || 'No data available', x + w / 2, y + h / 2 - 8, {
+    size: 14, weight: 500, color: T.textDim, align: 'center', baseline: 'middle'
+  });
 }
 
 // ─── BAR CHART ─────────────────────────────────────────
@@ -107,10 +134,10 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
 export function barChart(ctx: any, x: number, y: number, w: number, h: number, data: number[], opts?: {
   labels?: string[]; color?: string; showValues?: boolean; maxVal?: number;
 }) {
-  const color = opts?.color || T.accentBright;
+  const color = opts?.color || T.accent;
   const max = opts?.maxVal || Math.max(...data, 1);
   const barCount = data.length;
-  if (barCount === 0) return;
+  if (barCount === 0) { emptyState(ctx, x, y, w, h); return; }
   const gap = 3;
   const barW = Math.max((w - gap * (barCount + 1)) / barCount, 4);
   const topPad = 20;
@@ -121,7 +148,11 @@ export function barChart(ctx: any, x: number, y: number, w: number, h: number, d
     const val = Math.round((max * i) / ySteps);
     const yy = y + topPad + chartH - (i / ySteps) * chartH;
     text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
-    if (i > 0) fillRect(ctx, x, yy, w, 1, T.chartGrid);
+    if (i > 0) {
+      ctx.setLineDash?.([4, 4]);
+      fillRect(ctx, x, yy, w, 1, T.chartGrid);
+      ctx.setLineDash?.([]);
+    }
   }
 
   const localMax = opts?.maxVal || Math.max(...data, 1);
@@ -131,7 +162,7 @@ export function barChart(ctx: any, x: number, y: number, w: number, h: number, d
     const by = y + topPad + chartH - bh;
 
     const isPeak = data[i] === localMax && localMax > 0;
-    fillRect(ctx, bx, by, barW, bh, isPeak ? color : T.accent, 3);
+    fillRect(ctx, bx, by, barW, bh, isPeak ? color : '#7f1d1d', 3);
 
     if (opts?.labels && opts.labels[i] && i % Math.max(1, Math.floor(barCount / 14)) === 0) {
       text(ctx, opts.labels[i], bx + barW / 2, y + topPad + chartH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
@@ -148,10 +179,10 @@ export function barChart(ctx: any, x: number, y: number, w: number, h: number, d
 export function lineChart(ctx: any, x: number, y: number, w: number, h: number, data: number[], opts?: {
   color?: string; labels?: string[];
 }) {
-  const color = opts?.color || T.accentBright;
+  const color = opts?.color || T.accent;
   const max = Math.max(...data, 1);
   const n = data.length;
-  if (n === 0) return;
+  if (n === 0) { emptyState(ctx, x, y, w, h); return; }
   const topPad = 20;
   const chartH = h - topPad - 20;
 
@@ -160,10 +191,14 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
     const val = Math.round((max * i) / ySteps);
     const yy = y + topPad + chartH - (i / ySteps) * chartH;
     text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
-    if (i > 0) fillRect(ctx, x, yy, w, 1, T.chartGrid);
+    if (i > 0) {
+      ctx.setLineDash?.([4, 4]);
+      fillRect(ctx, x, yy, w, 1, T.chartGrid);
+      ctx.setLineDash?.([]);
+    }
   }
 
-  // Fill
+  // Area fill
   ctx.beginPath();
   ctx.moveTo(x, y + topPad + chartH);
   for (let i = 0; i < n; i++) {
@@ -177,7 +212,7 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
   ctx.fillStyle = T.chartFill;
   ctx.fill();
 
-  // Stroke
+  // Line stroke
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
     const px = x + (i / (n - 1)) * w;
@@ -186,7 +221,8 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
     else ctx.lineTo(px, py);
   }
   ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
   ctx.stroke();
 
   if (opts?.labels && opts.labels.length > 0) {

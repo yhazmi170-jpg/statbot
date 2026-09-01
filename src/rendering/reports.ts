@@ -33,7 +33,6 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
   ];
   for (let i = 0; i < stats.length; i++) statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
 
-  // 4 panels
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
   panelHeader(ctx, tl, 'Daily Messages');
@@ -49,7 +48,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     const ry = panelContentY(tr) + i * userRowH;
     const u = d.topUsers[i];
     const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1, rankColor,
       label: truncate(ctx, u.userId, tr.w - 180, { size: 16 }),
@@ -67,7 +66,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     const ry = panelContentY(bl) + i * chRowH;
     const ch = d.topChannels[i];
     const pct = maxCh > 0 ? ch.messages / maxCh : 0;
-    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.accent : i === 2 ? T.accentSoft : T.textDim;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, bl.x, ry, bl.w, chRowH, {
       rank: i + 1, rankColor,
       label: '#' + truncate(ctx, ch.name, bl.w - 180, { size: 16 }),
@@ -92,14 +91,13 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     text(ctx, item.label.toUpperCase(), br.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
     text(ctx, item.value, br.x + br.w - 16, ry, { size: 18, weight: 700, color: (item.color as string) || T.text, align: 'right' });
     ry += 38;
-    fillRect(ctx, br.x + 16, ry - 8, br.w - 32, 1, T.border);
+    fillRect(ctx, br.x + 16, ry - 8, br.w - 32, 1, T.borderSubtle);
   }
 
   footer(ctx, 'StatBot  •  m?help for commands');
   return canvas.toBuffer('image/png');
 }
 
-// Backward-compatible aliases
 interface WeeklyReportData {
   guildName: string; period: string;
   totalMessages: number; totalVoiceMs: number; uniqueUsers: number;
