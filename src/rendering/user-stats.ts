@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, truncate, numStr, durStr, THEME } from './theme.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr, durStr, THEME } from './theme.js';
 import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
@@ -69,7 +69,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   text(ctx, username.charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2 - 12, { size: 26, weight: 700, color: T.text, align: 'center' });
 
   const textX = avatarX + avatarSize + 16;
-  text(ctx, truncate(ctx, username, 300, { size: 28 }), textX, PAD + 16, { size: 28, weight: 700, color: T.text });
+  text(ctx, username, textX, PAD + 16, { size: 28, weight: 700, color: T.text });
   text(ctx, `${guildName}  •  Last ${d.totalDays} Days`, textX, PAD + 48, { size: 16, weight: 500, color: T.textMuted });
 
   text(ctx, `#${d.rank}`, W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
@@ -126,7 +126,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
       rowItem(ctx, cx, ry, chColW, chRowH, {
         rank: idx + 1,
         rankColor,
-        label: '#' + truncate(ctx, ch.name, chColW - 180, { size: 16 }),
+        label: ch.name,
         value: numStr(ch.messages),
         barPct: pct,
         isLast: i === chPerCol - 1,

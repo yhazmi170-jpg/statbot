@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr, truncate } from './theme.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
 import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer, COL_GAP } from './components.js';
 
 interface ReportData {
@@ -51,7 +51,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1, rankColor,
-      label: truncate(ctx, u.userId, tr.w - 180, { size: 16 }),
+      label: u.userId,
       value: numStr(u.messages), barPct: pct,
       isLast: i === Math.min(d.topUsers.length, 10) - 1,
     });
@@ -69,7 +69,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, bl.x, ry, bl.w, chRowH, {
       rank: i + 1, rankColor,
-      label: '#' + truncate(ctx, ch.name, bl.w - 180, { size: 16 }),
+      label: ch.name,
       value: numStr(ch.messages), barPct: pct,
       isLast: i === Math.min(d.topChannels.length, 10) - 1,
     });
@@ -103,7 +103,7 @@ interface WeeklyReportData {
   totalMessages: number; totalVoiceMs: number; uniqueUsers: number;
   joins: number; leaves: number; peakHour: string; peakDay?: string;
   topUsers: { userId: string; messages: number }[];
-  topChannels: { channelId: string; messages: number }[];
+  topChannels: { name: string; messages: number }[];
   dailyMessages: number[];
   hourlyByDay?: number[][]; prevMessages?: number;
 }
@@ -114,7 +114,7 @@ export async function renderWeeklyReport(d: WeeklyReportData): Promise<Buffer> {
     totalMessages: d.totalMessages, totalVoiceMs: d.totalVoiceMs, activeUsers: d.uniqueUsers,
     joins: d.joins, leaves: d.leaves, peakHour: d.peakHour,
     topUsers: d.topUsers,
-    topChannels: d.topChannels.map(c => ({ name: c.channelId, messages: c.messages })),
+    topChannels: d.topChannels,
     dailyMessages: d.dailyMessages, previousMessages: d.prevMessages,
   });
 }
@@ -125,7 +125,7 @@ export async function renderMonthlyReport(d: WeeklyReportData): Promise<Buffer> 
     totalMessages: d.totalMessages, totalVoiceMs: d.totalVoiceMs, activeUsers: d.uniqueUsers,
     joins: d.joins, leaves: d.leaves, peakHour: d.peakHour,
     topUsers: d.topUsers,
-    topChannels: d.topChannels.map(c => ({ name: c.channelId, messages: c.messages })),
+    topChannels: d.topChannels,
     dailyMessages: d.dailyMessages, previousMessages: d.prevMessages,
   });
 }

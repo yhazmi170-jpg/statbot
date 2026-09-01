@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, fillRect, text, truncate, numStr } from './theme.js';
-import { headerBanner, panelBg, footer } from './components.js';
+import { T, W, H, PAD, GAP, fillRect, text, numStr } from './theme.js';
+import { headerBanner, panelBg, footer, fitText } from './components.js';
 
 interface RankUser { userId: string; score: number; messages: number; voiceMs: number; activeDays: number; }
 
@@ -36,7 +36,7 @@ export async function renderServerRank(guildName: string, users: RankUser[], tot
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     text(ctx, String(i + 1).padStart(2, ' '), PAD + 16, ry + 10, { size: 18, weight: 700, color: rankColor });
     fillRect(ctx, PAD + 60, ry + 6, 30, 30, [T.accentBright, T.textSecondary, T.textMuted, T.textDim, '#3f3f46'][i % 5], 15);
-    text(ctx, truncate(ctx, u.userId, 300, { size: 14 }), PAD + 96, ry + 10, { size: 14, color: T.text });
+    fitText(ctx, u.userId, PAD + 96, ry + 10, 300, { size: 14, weight: 400, color: T.text });
 
     fillRect(ctx, PAD + 260, ry + 16, 160, 8, T.row, 4);
     const pct = maxScore > 0 ? u.score / maxScore : 0;

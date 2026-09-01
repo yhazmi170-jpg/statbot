@@ -1,4 +1,4 @@
-import { Message, AttachmentBuilder, PermissionFlagsBits } from 'discord.js';
+import { Message, AttachmentBuilder, PermissionFlagsBits, Guild } from 'discord.js';
 import { prisma, ensureGuild, log } from '../database/index.js';
 import { renderServerStats } from '../rendering/server-stats.js';
 import { renderUserStats } from '../rendering/user-stats.js';
@@ -73,9 +73,16 @@ registerCommand({
       queries.getServerStats(msg.guild!.id),
       queries.getActivityHeatmap(msg.guild!.id, 7),
     ]);
+    const resolvedChannels = guildStats.topChannels.map(c => ({
+      name: resolveChannelName(msg.guild!, c.channelId),
+      messages: c.messages,
+      voiceMs: 0,
+    }));
     const buf = await renderServerStats({
+      guildName: msg.guild!.name,
       guild: { name: msg.guild!.name, memberCount: msg.guild!.memberCount },
       ...guildStats,
+      topChannels: resolvedChannels,
       hourlyByDay,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'stats.png' })] });
@@ -160,12 +167,18 @@ registerCommand({
     const hourlyMsgs = Array(24).fill(0);
     for (const h of hourly) hourlyMsgs[h.hour] = h.messages;
 
+    const resolvedChannels = stats.topChannels.map(c => ({
+      name: resolveChannelName(msg.guild!, c.channelId),
+      messages: c.messages,
+      voiceMs: 0,
+    }));
+
     const buf = await renderUserStats({
       user: { username: targetUser.username, avatarUrl: targetUser.displayAvatarURL() },
       rank, totalMembers: msg.guild!.memberCount,
       totalMessages: stats.totalMessages, totalVoiceMs: stats.totalVoiceMs,
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter(d => d.messages > 0).length,
-      totalDays: 30, topChannels: stats.topChannels,
+      totalDays: 30, topChannels: resolvedChannels,
       dailyMessages: stats.dailyBreakdown.map(d => d.messages),
       weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile,
       msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
@@ -465,6 +478,10 @@ registerCommand({
     ]);
     const growth = await queries.getGrowthData(msg.guild!.id, 7);
     const peakHours = await queries.getPeakHoursAgg(msg.guild!.id, 7);
+    const resolvedChannels = topChannels.map(c => ({
+      name: resolveChannelName(msg.guild!, c.channelId),
+      messages: c.messages,
+    }));
     const buf = await renderWeeklyReport({
       guildName: msg.guild!.name,
       period: 'Weekly',
@@ -476,7 +493,7 @@ registerCommand({
       peakHour: peakHours[0] ? `${String(peakHours[0].hour).padStart(2, '0')}:00` : '—',
       peakDay: getPeakDay(hourlyByDay),
       topUsers: topUsers.map(u => ({ userId: u.userId, messages: u.messages })),
-      topChannels: topChannels.map(c => ({ channelId: c.channelId, messages: c.messages })),
+      topChannels: resolvedChannels,
       dailyMessages: stats.dailyStats.map(s => s.totalMessages),
       hourlyByDay,
       prevMessages: prevStats.totalMessages,
@@ -500,6 +517,10 @@ registerCommand({
     ]);
     const growth = await queries.getGrowthData(msg.guild!.id, 30);
     const peakHours = await queries.getPeakHoursAgg(msg.guild!.id, 30);
+    const resolvedChannels = topChannels.map(c => ({
+      name: resolveChannelName(msg.guild!, c.channelId),
+      messages: c.messages,
+    }));
     const buf = await renderMonthlyReport({
       guildName: msg.guild!.name,
       period: 'Monthly',
@@ -511,7 +532,7 @@ registerCommand({
       peakHour: peakHours[0] ? `${String(peakHours[0].hour).padStart(2, '0')}:00` : '—',
       peakDay: getPeakDay(hourlyByDay),
       topUsers: topUsers.map(u => ({ userId: u.userId, messages: u.messages })),
-      topChannels: topChannels.map(c => ({ channelId: c.channelId, messages: c.messages })),
+      topChannels: resolvedChannels,
       dailyMessages: stats.dailyStats.map(s => s.totalMessages),
       hourlyByDay,
       prevMessages: prevStats.totalMessages,
@@ -686,6 +707,11 @@ registerCommand({
 });
 
 // ─── Helpers ──────────────────────────────────────────
+
+function resolveChannelName(guild: Guild, channelId: string): string {
+  const ch = guild.channels.cache.get(channelId);
+  return ch ? `#${ch.name}` : '#deleted-channel';
+}
 
 function getPeakHour(grid: number[][]): string {
   const totals = Array(24).fill(0);

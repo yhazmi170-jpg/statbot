@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, truncate, numStr, durStr } from './theme.js';
-import { headerBanner, panelBg, panelHeader, panelContentY, rowItem, footer } from './components.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr, durStr } from './theme.js';
+import { headerBanner, panelBg, panelHeader, panelContentY, rowItem, footer, fitText } from './components.js';
 
 interface Row { userId: string; messages: number; voiceMs: number }
 
@@ -26,7 +26,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, tl.x, ry, tl.w, rowH, {
       rank: i + 1, rankColor,
-      label: truncate(ctx, u.userId, tl.w - 180, { size: 16 }),
+      label: u.userId,
       value: numStr(u.messages), barPct: pct,
       isLast: i === Math.min(users.length, 14) - 1,
     });
@@ -42,7 +42,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
 
   let ry = panelContentY(tr) + 4;
   text(ctx, 'TOP USER', tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim }); ry += 20;
-  text(ctx, truncate(ctx, topUser?.userId || '—', tr.w - 40, { size: 22 }), tr.x + 16, ry, { size: 22, weight: 700, color: T.text }); ry += 28;
+  fitText(ctx, topUser?.userId || '—', tr.x + 16, ry, tr.w - 40, { size: 22, weight: 700, color: T.text }); ry += 28;
   text(ctx, `${numStr(topUser?.messages || 0)} messages  •  ${topShare}% of total`, tr.x + 16, ry, { size: 14, weight: 500, color: T.textMuted }); ry += 32;
   fillRect(ctx, tr.x + 16, ry, tr.w - 32, 1, T.borderSubtle); ry += 16;
 
@@ -54,7 +54,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
     text(ctx, 'TOP VOICE', tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim }); ry += 24;
     for (const u of voiceTop) {
       fillRect(ctx, tr.x + 16, ry, 28, 28, T.accentDim, 14);
-      text(ctx, truncate(ctx, u.userId, tr.w - 140, { size: 14 }), tr.x + 50, ry + 4, { size: 14, weight: 500, color: T.text });
+      fitText(ctx, u.userId, tr.x + 50, ry + 4, tr.w - 140, { size: 14, weight: 500, color: T.text });
       text(ctx, durStr(u.voiceMs), tr.x + tr.w - 16, ry + 4, { size: 14, weight: 600, color: T.accentBright, align: 'right' });
       ry += 32;
     }

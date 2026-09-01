@@ -3,6 +3,38 @@ import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, 
 export { COL_GAP, PANEL_W, PANEL_H, PANELS, GRID_TOP, STAT_W, STAT_H, GAP };
 export const HALF_W = PANEL_W;
 
+// ─── FIT TEXT (safe truncation) ─────────────────────────
+
+function fontFamily(weight: number): string {
+  if (weight >= 700) return 'Inter Bold';
+  if (weight >= 600) return 'Inter SemiBold';
+  if (weight >= 500) return 'Inter Medium';
+  return 'Inter';
+}
+
+export function fitText(ctx: any, str: string, x: number, y: number, maxWidth: number, opts: {
+  size: number; weight: number; color?: string;
+  align?: 'left' | 'center' | 'right';
+  baseline?: 'top' | 'middle' | 'bottom';
+}) {
+  const font = `${opts.weight} ${opts.size}px ${fontFamily(opts.weight)}`;
+  ctx.font = font;
+  ctx.fillStyle = opts.color || T.text;
+  ctx.textAlign = opts.align || 'left';
+  ctx.textBaseline = opts.baseline || 'top';
+
+  let display = str;
+  if (ctx.measureText(display).width > maxWidth) {
+    while (ctx.measureText(display + '…').width > maxWidth && display.length > 0) {
+      display = display.slice(0, -1);
+    }
+    display += '…';
+  }
+  ctx.fillText(display, x, y);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+}
+
 // ─── CARD DRAWING ──────────────────────────────────────
 
 function drawCard(ctx: any, x: number, y: number, w: number, h: number, opts?: {
@@ -10,17 +42,13 @@ function drawCard(ctx: any, x: number, y: number, w: number, h: number, opts?: {
   accentColor?: string;
   subtle?: boolean;
 }) {
-  // Card background
   fillRect(ctx, x, y, w, h, opts?.subtle ? '#0e0e11' : T.panel, THEME.borderRadius);
 
-  // Subtle border
-  fillRect(ctx, x, y, w, h, 'transparent', THEME.borderRadius);
   ctx.strokeStyle = T.border;
   ctx.lineWidth = 1;
   rr(ctx, x, y, w, h, THEME.borderRadius);
   ctx.stroke();
 
-  // Optional accent top line (very subtle)
   if (opts?.accentTop) {
     ctx.save();
     rr(ctx, x, y, w, h, THEME.borderRadius);
@@ -60,7 +88,16 @@ export function statCard(ctx: any, index: number, label: string, value: string, 
   drawCard(ctx, x, y, w, h, { accentTop: true, accentColor });
 
   text(ctx, label.toUpperCase(), x + 16, y + 18, { size: 13, weight: 700, color: T.textDim });
-  text(ctx, value, x + 16, y + 46, { size: 44, weight: 700, color: T.text });
+
+  // Dynamically size stat value to fit the card
+  const maxValW = w - 32;
+  let fontSize = 44;
+  ctx.font = `700 ${fontSize}px ${fontFamily(700)}`;
+  while (ctx.measureText(value).width > maxValW && fontSize > 20) {
+    fontSize -= 2;
+    ctx.font = `700 ${fontSize}px ${fontFamily(700)}`;
+  }
+  text(ctx, value, x + 16, y + 46, { size: fontSize, weight: 700, color: T.text });
 }
 
 // ─── PANELS ────────────────────────────────────────────
@@ -78,7 +115,6 @@ export function panelHeader(ctx: any, pos: { x: number; y: number; w: number }, 
   fillRect(ctx, pos.x, pos.y, pos.w, headerH, '#16161a', 0);
   ctx.restore();
 
-  // Separator
   fillRect(ctx, pos.x, pos.y + headerH - 1, pos.w, 1, T.borderSubtle);
 
   text(ctx, title.toUpperCase(), pos.x + 16, pos.y + 11, { size: 20, weight: 700, color: T.text });
@@ -108,7 +144,8 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
   }
 
   const nameX = opts.rank !== undefined ? rankX + 38 : x + 12;
-  text(ctx, opts.label, nameX, y + h / 2 - 10, { size: 16, weight: 500, color: T.text });
+  const maxLabelW = w - (nameX - x) - 16 - 100;
+  fitText(ctx, opts.label, nameX, y + h / 2 - 10, maxLabelW, { size: 16, weight: 500, color: T.text });
 
   text(ctx, opts.value, x + w - 16, y + h / 2 - 10, { size: 16, weight: 700, color: T.accentBright, align: 'right' });
 
@@ -118,6 +155,45 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
     const barY = y + h / 2 + 10;
     fillRect(ctx, barX, barY, barW, 4, '#1e1e24', 2);
     fillRect(ctx, barX, barY, Math.max(barW * opts.barPct, 4), 4, T.accent, 2);
+  }
+}
+
+// ─── LEADERBOARD (with empty states) ───────────────────
+
+export function leaderboard(ctx: any, x: number, y: number, w: number, h: number,
+  items: Array<{ name: string; value: number }>, opts?: { maxItems?: number; valueLabel?: string }) {
+  const maxItems = opts?.maxItems || 8;
+  const rowH = Math.floor((h - 44) / Math.min(items.length || maxItems, maxItems));
+
+  if (items.length === 0) {
+    // Empty state: show placeholder rows
+    for (let i = 0; i < maxItems; i++) {
+      const ry = y + 40 + i * rowH;
+      if (i < maxItems - 1) fillRect(ctx, x, ry + rowH - 1, w, 1, T.borderSubtle);
+
+      const rankX = x + 12;
+      text(ctx, String(i + 1).padStart(2, ' '), rankX, ry + rowH / 2 - 10, { size: 18, weight: 700, color: T.textFaint });
+
+      const nameX = rankX + 38;
+      text(ctx, '—', nameX, ry + rowH / 2 - 10, { size: 16, weight: 500, color: T.textFaint });
+    }
+    return;
+  }
+
+  const maxVal = items[0]?.value || 1;
+  for (let i = 0; i < Math.min(items.length, maxItems); i++) {
+    const ry = y + 40 + i * rowH;
+    const item = items[i];
+    const pct = maxVal > 0 ? item.value / maxVal : 0;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
+
+    rowItem(ctx, x, ry, w, rowH, {
+      rank: i + 1, rankColor,
+      label: item.name,
+      value: item.value.toLocaleString(),
+      barPct: pct,
+      isLast: i === Math.min(items.length, maxItems) - 1,
+    });
   }
 }
 
@@ -198,7 +274,6 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
     }
   }
 
-  // Area fill
   ctx.beginPath();
   ctx.moveTo(x, y + topPad + chartH);
   for (let i = 0; i < n; i++) {
@@ -212,7 +287,6 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
   ctx.fillStyle = T.chartFill;
   ctx.fill();
 
-  // Line stroke
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
     const px = x + (i / (n - 1)) * w;
@@ -238,53 +312,70 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
 
 export function heatmap(ctx: any, x: number, y: number, w: number, h: number, grid: number[][]) {
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const days = 7;
-  const hours = 24;
-  const labelW = 40;
-  const topLabelH = 20;
-  const cellGap = 4;
-  const cellW = (w - labelW - cellGap) / hours;
-  const cellH = (h - topLabelH - 30 - cellGap) / days;
+
+  const labelWidth = 45;
+  const headerHeight = 35;
+  const footerHeight = 30;
+
+  const gridX = x + labelWidth + 10;
+  const gridY = y + headerHeight + 5;
+  const gridWidth = w - labelWidth - 30;
+  const gridHeight = h - headerHeight - footerHeight - 10;
+
+  const cellWidth = Math.floor(gridWidth / 24);
+  const cellHeight = Math.floor(gridHeight / 7);
+  const gap = 3;
 
   let maxVal = 0;
   for (const row of grid) for (const v of row) if (v > maxVal) maxVal = v;
 
-  // Hour labels
-  for (let hr = 0; hr < hours; hr++) {
-    if (hr % 3 === 0) {
-      text(ctx, `${String(hr).padStart(2, '0')}`, x + labelW + hr * cellW + cellW / 2, y, { size: 11, weight: 500, color: T.textDim, align: 'center' });
-    }
+  // Hour headers
+  ctx.font = '500 11px Inter';
+  ctx.fillStyle = T.textDim;
+  for (let hr = 0; hr < 24; hr += 3) {
+    const hrText = hr.toString().padStart(2, '0');
+    const hrX = gridX + (hr * cellWidth) + (cellWidth / 2) - 6;
+    ctx.fillText(hrText, hrX, gridY - 10);
   }
 
-  // Day labels + cells
-  for (let d = 0; d < days; d++) {
-    text(ctx, dayNames[d], x, y + topLabelH + d * cellH + cellH / 2 - 7, { size: 12, weight: 500, color: T.textDim });
-    for (let hr = 0; hr < hours; hr++) {
+  // Day rows & cells
+  for (let d = 0; d < 7; d++) {
+    ctx.font = '500 12px Inter';
+    ctx.fillStyle = T.textSecondary;
+    const dayY = gridY + (d * cellHeight) + (cellHeight / 2) + 4;
+    ctx.fillText(dayNames[d], x + 12, dayY);
+
+    for (let hr = 0; hr < 24; hr++) {
       const val = grid[d]?.[hr] || 0;
       const intensity = maxVal > 0 ? val / maxVal : 0;
-      let color: string = T.heat0;
-      if (intensity > 0.8) color = T.heat5;
-      else if (intensity > 0.6) color = T.heat4;
-      else if (intensity > 0.4) color = T.heat3;
-      else if (intensity > 0.2) color = T.heat2;
-      else if (intensity > 0) color = T.heat1;
 
-      fillRect(ctx, x + labelW + hr * cellW, y + topLabelH + d * cellH, cellW - cellGap, cellH - cellGap, color, 3);
+      let fillColor: string = T.heat0;
+      if (intensity > 0.8) fillColor = T.heat5;
+      else if (intensity > 0.6) fillColor = T.heat4;
+      else if (intensity > 0.4) fillColor = T.heat3;
+      else if (intensity > 0.2) fillColor = T.heat2;
+      else if (intensity > 0) fillColor = T.heat1;
+
+      const cellX = gridX + (hr * cellWidth);
+      const cellY = gridY + (d * cellHeight);
+
+      fillRect(ctx, cellX, cellY, cellWidth - gap, cellHeight - gap, fillColor, 3);
     }
   }
 
   // Legend
-  const legendX = x + labelW;
-  const legendY = y + h - 16;
-  const legendW = 140;
-  text(ctx, 'Less', legendX, legendY, { size: 11, weight: 500, color: T.textDim });
-  const step = 5;
-  const lw = legendW / step;
+  const legendY = y + h - 15;
+  ctx.font = '500 11px Inter';
+  ctx.fillStyle = T.textDim;
+  ctx.fillText('Less', gridX, legendY);
+
   const heatColors = [T.heat0, T.heat2, T.heat3, T.heat4, T.heat5] as string[];
-  for (let i = 0; i < step; i++) {
-    fillRect(ctx, legendX + 34 + i * lw, legendY, lw - 1, 14, heatColors[i], 3);
-  }
-  text(ctx, 'More', legendX + 34 + legendW + 6, legendY, { size: 11, weight: 500, color: T.textDim });
+  heatColors.forEach((col, i) => {
+    fillRect(ctx, gridX + 35 + (i * 16), legendY - 9, 12, 12, col, 2);
+  });
+
+  ctx.fillStyle = T.textDim;
+  ctx.fillText('More', gridX + 35 + (heatColors.length * 16) + 8, legendY);
 }
 
 // ─── FOOTER ────────────────────────────────────────────

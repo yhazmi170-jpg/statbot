@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, truncate, numStr, THEME } from './theme.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr, THEME } from './theme.js';
 import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer } from './components.js';
 import type { FakeUserData } from '../fake/generator.js';
 
@@ -58,7 +58,7 @@ export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, bl.x, ry, fullW, chRowH, {
       rank: i + 1, rankColor,
-      label: '#' + truncate(ctx, ch.channelId, fullW - 180, { size: 16 }),
+      label: ch.channelId,
       value: numStr(ch.messages), barPct: pct,
       isLast: i === Math.min(d.topChannels.length, 8) - 1,
     });

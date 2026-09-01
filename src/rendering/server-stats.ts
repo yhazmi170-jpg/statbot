@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, truncate, numStr } from './theme.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr } from './theme.js';
 import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
@@ -61,11 +61,12 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
   });
 
   const peak = hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 });
+  const topChName = topChannels[0] ? topChannels[0].name : '—';
   const stats = [
     { label: 'Messages', value: numStr(totalMessages), color: T.accentBright },
     { label: 'Active Users', value: numStr(activeUsers) },
     { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
-    { label: 'Top Channel', value: topChannels[0] ? '#' + truncate(ctx, topChannels[0].name, 120, { size: 28 }) : '—' },
+    { label: 'Top Channel', value: topChName },
     { label: 'Peak Hour', value: `${String(peak.hour).padStart(2, '0')}:00` },
   ];
   for (let i = 0; i < stats.length; i++) {
@@ -94,7 +95,7 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1,
       rankColor,
-      label: truncate(ctx, u.userId, tr.w - 180, { size: 16 }),
+      label: u.userId,
       value: numStr(u.messages),
       barPct: pct,
       isLast: i === Math.min(d.topUsers.length, 12) - 1,
@@ -114,7 +115,7 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     rowItem(ctx, bl.x, ry, bl.w, chRowH, {
       rank: i + 1,
       rankColor,
-      label: '#' + truncate(ctx, ch.name, bl.w - 180, { size: 16 }),
+      label: ch.name,
       value: numStr(ch.messages),
       barPct: pct,
       isLast: i === Math.min(topChannels.length, 12) - 1,

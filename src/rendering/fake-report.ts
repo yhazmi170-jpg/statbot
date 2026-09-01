@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr, truncate } from './theme.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
 import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer } from './components.js';
 import type { FakeReportData } from '../fake/generator.js';
 
@@ -43,7 +43,7 @@ export async function renderFakeReport(d: FakeReportData): Promise<Buffer> {
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1, rankColor,
-      label: truncate(ctx, u.userId, tr.w - 180, { size: 16 }),
+      label: u.userId,
       value: numStr(u.messages), barPct: pct,
       isLast: i === Math.min(d.topUsers.length, 10) - 1,
     });
@@ -61,7 +61,7 @@ export async function renderFakeReport(d: FakeReportData): Promise<Buffer> {
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
     rowItem(ctx, bl.x, ry, bl.w, chRowH, {
       rank: i + 1, rankColor,
-      label: '#' + truncate(ctx, ch.channelId, bl.w - 180, { size: 16 }),
+      label: ch.channelId,
       value: numStr(ch.messages), barPct: pct,
       isLast: i === Math.min(d.topChannels.length, 10) - 1,
     });

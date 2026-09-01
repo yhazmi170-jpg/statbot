@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, fillRect, text, truncate, numStr, durStr } from './theme.js';
-import { headerBanner, panelBg, footer } from './components.js';
+import { T, W, H, PAD, GAP, fillRect, text, numStr, durStr } from './theme.js';
+import { headerBanner, panelBg, footer, fitText } from './components.js';
 
 interface InactiveUser { userId: string; lastActivity: string; messages: number; voiceMs: number; }
 
@@ -37,7 +37,7 @@ export async function renderInactive(guildName: string, days: number, users: Ina
     if (i % 2 === 0) fillRect(ctx, PAD, ry, W - PAD * 2, 40, T.row, 0);
     text(ctx, String(i + 1).padStart(2, ' '), PAD + 16, ry + 10, { size: 16, weight: 700, color: T.textDim });
     fillRect(ctx, PAD + colRank + 16, ry + 6, 28, 28, T.accentDim, 14);
-    text(ctx, truncate(ctx, u.userId, colUser - 50, { size: 14 }), PAD + colRank + 50, ry + 10, { size: 14, color: T.text });
+    fitText(ctx, u.userId, PAD + colRank + 50, ry + 10, colUser - 50, { size: 14, weight: 400, color: T.text });
     text(ctx, u.lastActivity, PAD + colRank + colUser + 16, ry + 10, { size: 13, weight: 500, color: T.textMuted });
     text(ctx, numStr(u.messages), PAD + colRank + colUser + colLast + 16, ry + 10, { size: 14, color: T.text });
     text(ctx, durStr(u.voiceMs), PAD + colRank + colUser + colLast + colMsgs + 16, ry + 10, { size: 14, color: T.text });
