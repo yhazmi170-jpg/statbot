@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, areaLineChart, rowItem, heatmap, footer } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, areaLineChart, rowItem, heatmap, footer, sanitizeText } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
 interface Hourly { hour: number; messages: number }
@@ -50,12 +50,12 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
   const heatmapGrid = d.heatmapGrid || d.hourlyByDay || Array.from({ length: 7 }, () => Array(24).fill(0));
 
   const topChannels = d.topChannels.map(c => ({
-    name: c.name || c.channelId || 'unknown',
+    name: sanitizeText(c.name || c.channelId || 'unknown'),
     messages: c.messages,
     voiceMs: c.voiceMs || 0,
   }));
 
-  headerBanner(ctx, 'StatBot', `${guildName} • ${period}`, {
+  headerBanner(ctx, sanitizeText(guildName), period, {
     rightLabel: 'Total Messages',
     rightValue: numStr(totalMessages),
   });
@@ -67,7 +67,7 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     { label: 'Active Users', value: numStr(activeUsers) },
     { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
     { label: 'Top Channel', value: topChName },
-    { label: 'Peak Hour', value: `${String(peak.hour).padStart(2, '0')}:00` },
+    { label: 'Peak Hour', value: String(peak.hour).padStart(2, '0') },
   ];
   for (let i = 0; i < stats.length; i++) {
     statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);

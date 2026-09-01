@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer, COL_GAP } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer, COL_GAP, sanitizeText } from './components.js';
 
 interface ReportData {
   type: 'weekly' | 'monthly';
@@ -19,7 +19,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
   fillRect(ctx, 0, 0, W, H, T.bg);
 
   const title = d.type === 'weekly' ? 'Weekly Report' : 'Monthly Report';
-  headerBanner(ctx, title, `${d.guildName} • ${d.period}`, {
+  headerBanner(ctx, title, `${sanitizeText(d.guildName)} • ${d.period}`, {
     rightLabel: d.type === 'weekly' ? 'This Week' : 'This Month',
     rightValue: numStr(d.totalMessages),
   });

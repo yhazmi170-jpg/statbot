@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr, durStr } from './theme.js';
-import { headerBanner, panelBg, panelHeader, panelContentY, rowItem, footer, fitText } from './components.js';
+import { headerBanner, panelBg, panelHeader, panelContentY, rowItem, footer, fitText, sanitizeText } from './components.js';
 
 interface Row { userId: string; messages: number; voiceMs: number }
 
@@ -9,7 +9,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
   const ctx = canvas.getContext('2d');
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  headerBanner(ctx, 'Top Users', `${guildName} • ${period}`, {
+  headerBanner(ctx, 'Top Users', `${sanitizeText(guildName)} • ${period}`, {
     rightLabel: 'Total Messages',
     rightValue: numStr(totalMsgs),
   });

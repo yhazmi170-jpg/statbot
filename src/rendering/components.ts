@@ -3,6 +3,14 @@ import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, 
 export { COL_GAP, PANEL_W, PANEL_H, PANELS, GRID_TOP, STAT_W, STAT_H, GAP };
 export const HALF_W = PANEL_W;
 
+// ─── SANITIZE TEXT (strip unrenderable glyphs) ──────────
+
+export function sanitizeText(str: string): string {
+  // Strip unrenderable decorative symbols/emojis that cause [NO GLYPH] errors
+  // Keep basic ASCII, common Latin, digits, and # (for channel names)
+  return str.replace(/[^\x20-\x7E]/g, '').trim() || '';
+}
+
 // ─── FIT TEXT (safe truncation) ─────────────────────────
 
 function fontFamily(weight: number): string {
@@ -220,7 +228,13 @@ export function areaLineChart(ctx: any, x: number, y: number, w: number, h: numb
   const topPad = 20;
   const chartH = h - topPad - 20;
 
-  // Y-axis grid + labels
+  // Clip to panel bounds to prevent overflow into adjacent panels
+  ctx.save();
+  ctx.beginPath();
+  rr(ctx, x - 40, y - 5, w + 60, h + 10, 8);
+  ctx.clip();
+
+  // Y-axis grid + labels (drawn outside clip for labels)
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((max * i) / ySteps);
@@ -267,7 +281,9 @@ export function areaLineChart(ctx: any, x: number, y: number, w: number, h: numb
   ctx.lineCap = 'round';
   ctx.stroke();
 
-  // X-axis labels
+  ctx.restore(); // Release clip
+
+  // X-axis labels (outside clip)
   if (opts?.labels && opts.labels.length > 0) {
     const step = Math.max(1, Math.floor(n / 14));
     for (let i = 0; i < n; i += step) {

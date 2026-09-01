@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr, THEME } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer, sanitizeText } from './components.js';
 import type { FakeUserData } from '../fake/generator.js';
 
 export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
@@ -12,7 +12,7 @@ export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
   const avatarSize = 56;
   fillRect(ctx, PAD + 20, PAD + 12, avatarSize, avatarSize, T.accentDim, avatarSize / 2);
   text(ctx, d.username.charAt(0).toUpperCase(), PAD + 20 + avatarSize / 2, PAD + 12 + avatarSize / 2 - 12, { size: 26, weight: 700, color: T.text, align: 'center' });
-  text(ctx, d.username, PAD + 20 + avatarSize + 16, PAD + 16, { size: 28, weight: 700, color: T.text });
+  text(ctx, sanitizeText(d.username), PAD + 20 + avatarSize + 16, PAD + 16, { size: 28, weight: 700, color: T.text });
   text(ctx, 'Last 30 Days', PAD + 20 + avatarSize + 16, PAD + 48, { size: 16, weight: 500, color: T.textMuted });
   text(ctx, `#${d.rank}`, W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
   text(ctx, `of ${numStr(d.totalMembers)} users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });

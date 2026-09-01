@@ -456,7 +456,7 @@ registerCommand({
       await msg.reply({ content: '❌ This command requires Administrator permission.' });
       return;
     }
-    const days = parseInt(args[0]) || 30;
+    const days = Math.min(Math.max(parseInt(args[0]) || 7, 3), 7);
     const users = await queries.getInactiveMembers(msg.guild!.id, days, 20);
     const buf = await renderInactive(msg.guild!.name, days, users);
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'inactive.png' })] });

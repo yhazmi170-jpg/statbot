@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, panelBg, panelHeader, panelContentY, footer, COL_GAP } from './components.js';
+import { headerBanner, panelBg, panelHeader, panelContentY, footer, COL_GAP, sanitizeText } from './components.js';
 
 interface Data {
   guild: { name: string; memberCount: number; channelCount: number; roleCount: number; emojiCount: number; boostLevel: number; boostCount: number; createdAt: string; ownerTag?: string; };
@@ -13,7 +13,7 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
   const ctx = canvas.getContext('2d');
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  headerBanner(ctx, d.guild.name, `Server Overview  •  Created ${d.guild.createdAt}`, {
+  headerBanner(ctx, sanitizeText(d.guild.name), `Server Overview  •  Created ${d.guild.createdAt}`, {
     rightLabel: 'Members', rightValue: numStr(d.guild.memberCount),
   });
 

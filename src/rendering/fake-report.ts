@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer, sanitizeText } from './components.js';
 import type { FakeReportData } from '../fake/generator.js';
 
 export async function renderFakeReport(d: FakeReportData): Promise<Buffer> {
@@ -8,7 +8,7 @@ export async function renderFakeReport(d: FakeReportData): Promise<Buffer> {
   const ctx = canvas.getContext('2d');
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  headerBanner(ctx, `${d.period} Report`, d.guildName, {
+  headerBanner(ctx, `${d.period} Report`, sanitizeText(d.guildName), {
     rightLabel: 'Total Messages', rightValue: numStr(d.totalMessages),
   });
 

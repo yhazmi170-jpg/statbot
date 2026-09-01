@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr, durStr, THEME } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer, sanitizeText } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
 interface Hourly { hour: number; messages: number }
@@ -38,7 +38,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
 
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  const username = d.username || d.user?.username || d.userId || 'User';
+  const username = sanitizeText(d.username || d.user?.username || d.userId || 'User');
   const totalUsers = d.totalUsers || d.totalMembers || 0;
   const guildName = d.guildName || '';
 
@@ -54,7 +54,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   const peakHour = d.peakHour ?? hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 }).hour;
 
   const topChannels = d.topChannels.map(c => ({
-    name: c.name || c.channelId || 'unknown',
+    name: sanitizeText(c.name || c.channelId || 'unknown'),
     messages: c.messages,
     voiceMs: c.voiceMs || 0,
   }));
@@ -79,7 +79,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
     { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
     { label: 'Active Days', value: `${d.activeDays}/${d.totalDays}` },
-    { label: 'Peak Hour', value: `${String(peakHour).padStart(2, '0')}:00` },
+    { label: 'Peak Hour', value: String(peakHour).padStart(2, '0') },
     { label: 'Percentile', value: `Top ${d.percentile}%` },
   ];
   for (let i = 0; i < stats.length; i++) {

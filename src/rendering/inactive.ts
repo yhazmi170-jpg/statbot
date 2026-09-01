@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, fillRect, text, numStr, durStr } from './theme.js';
-import { headerBanner, panelBg, footer, fitText } from './components.js';
+import { headerBanner, panelBg, footer, fitText, sanitizeText } from './components.js';
 
 interface InactiveUser { userId: string; lastActivity: string; messages: number; voiceMs: number; }
 
@@ -9,7 +9,7 @@ export async function renderInactive(guildName: string, days: number, users: Ina
   const ctx = canvas.getContext('2d');
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  headerBanner(ctx, 'Inactive Members', `${guildName} • No activity in ${days} days`, {
+  headerBanner(ctx, 'Inactive Members', `${sanitizeText(guildName)} • No activity in ${days} days`, {
     rightLabel: 'Inactive Users', rightValue: numStr(users.length),
   });
 
