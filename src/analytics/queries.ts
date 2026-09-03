@@ -78,7 +78,7 @@ export async function getUserStats(guildId: string, userId: string, days: number
       where: { guildId, userId, date: { gte: since }, topChannelId: { not: null } },
       _count: { topChannelId: true },
       orderBy: { _count: { topChannelId: 'desc' } },
-      take: 5,
+      take: 6,
     }),
     prisma.userDailyStats.findMany({
       where: { guildId, userId, date: { gte: since } },

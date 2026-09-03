@@ -177,11 +177,23 @@ registerCommand({
       }
     }
 
-    const resolvedChannels = stats.topChannels.map(c => ({
-      name: resolveChannelName(msg.guild!, c.channelId),
-      messages: c.messages,
-      voiceMs: 0,
-    }));
+    const resolvedChannels = stats.topChannels
+      .map(c => {
+        const ch = msg.guild!.channels.cache.get(c.channelId);
+        if (!ch) return null;
+        if (ch.isTextBased()) {
+          const everyone = msg.guild!.roles.everyone;
+          const perms = ch.permissionsFor(everyone);
+          if (perms && !perms.has('ViewChannel')) return null;
+        }
+        return {
+          name: resolveChannelName(msg.guild!, c.channelId),
+          messages: c.messages,
+          voiceMs: 0,
+        };
+      })
+      .filter((c): c is { name: string; messages: number; voiceMs: number } => c !== null)
+      .slice(0, 6);
 
     const topChannelName = resolvedChannels.length > 0 ? resolvedChannels[0].name : '—';
 

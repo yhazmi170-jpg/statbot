@@ -181,35 +181,36 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   barChart(ctx, tr.x + 50, panelContentY(tr), tr.w - 70, tr.h - 55,
     d.weekdayMessages, { labels: dayLabels, showValues: true, color: T.accent, maxVal: wdYMax });
 
-  // Top Channels panel
+  // Top Channels panel — 2-column grid, max 6
   const bl = PANELS.bottomLeft;
   const br = PANELS.bottomRight;
   const fullW = bl.w + GAP + br.w;
   panelBg(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
-  panelHeader(ctx, { x: bl.x, y: bl.y, w: fullW }, 'Top Channels', `${topChannels.length} channels`);
+  panelHeader(ctx, { x: bl.x, y: bl.y, w: fullW }, 'Top Channels', `${Math.min(topChannels.length, 6)} channels`);
 
-  const maxCh = topChannels[0]?.messages || 1;
+  const displayChannels = topChannels.slice(0, 6);
+  const maxCh = displayChannels[0]?.messages || 1;
   const chCols = 2;
   const chColW = (fullW - GAP) / chCols;
-  const chPerCol = Math.ceil(Math.min(topChannels.length, 10) / chCols);
+  const chPerCol = 3;
   const chRowH = Math.floor((bl.h - 50) / chPerCol);
 
   for (let ci = 0; ci < chCols; ci++) {
-    const cx = bl.x + ci * (chColW + GAP);
-    for (let i = 0; i < chPerCol; i++) {
-      const idx = ci * chPerCol + i;
-      if (idx >= Math.min(topChannels.length, 10)) break;
-      const ch = topChannels[idx];
-      const ry = panelContentY(bl) + i * chRowH;
+    const colX = bl.x + ci * (chColW + GAP);
+    for (let ri = 0; ri < chPerCol; ri++) {
+      const idx = ci * chPerCol + ri;
+      if (idx >= displayChannels.length) break;
+      const ch = displayChannels[idx];
+      const itemY = panelContentY(bl) + ri * chRowH;
       const pct = maxCh > 0 ? ch.messages / maxCh : 0;
       const rankColor = idx === 0 ? T.accentBright : idx === 1 ? T.textSecondary : idx === 2 ? T.textMuted : T.textDim;
-      rowItem(ctx, cx, ry, chColW, chRowH, {
+      rowItem(ctx, colX, itemY, chColW, chRowH, {
         rank: idx + 1,
         rankColor,
         label: ch.name,
         value: numStr(ch.messages),
         barPct: pct,
-        isLast: i === chPerCol - 1,
+        isLast: ri === chPerCol - 1,
       });
     }
   }
