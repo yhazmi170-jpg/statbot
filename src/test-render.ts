@@ -50,12 +50,12 @@ async function main() {
   writeFileSync('/tmp/test-me.png', await renderUserStats({
     guildName: '/marlboro social', userId: 'bunnycatdpg', username: 'bunnycatdpg',
     totalMessages: 5898, totalVoiceMs: 23456000, activeDays: 24, totalDays: 30,
-    firstSeen: '2024-01-15', peakHour: 21,
+    firstSeen: '2024-01-15', topChannelName: '#chat',
     topChannels: [
       { name: '#chat', messages: 3200 }, { name: '#general', messages: 1400 },
       { name: '#gaming', messages: 800 }, { name: '#media', messages: 498 },
     ],
-    hourlyActivity: hourlyByDay[0].map((messages, hour) => ({ hour, messages })),
+    hourlyMessages: hourlyByDay[0].map((messages, hour) => messages),
     weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
     rank: 1, totalUsers: 347, percentile: 94,
   }));

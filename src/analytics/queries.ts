@@ -73,11 +73,11 @@ export async function getUserStats(guildId: string, userId: string, days: number
       _sum: { durationMs: true },
       _count: { id: true },
     }),
-    prisma.channelStats.groupBy({
-      by: ['channelId'],
-      where: { guildId, date: { gte: since } },
-      _sum: { messages: true },
-      orderBy: { _sum: { messages: 'desc' } },
+    prisma.userDailyStats.groupBy({
+      by: ['topChannelId'],
+      where: { guildId, userId, date: { gte: since }, topChannelId: { not: null } },
+      _count: { topChannelId: true },
+      orderBy: { _count: { topChannelId: 'desc' } },
       take: 5,
     }),
     prisma.userDailyStats.findMany({
@@ -92,8 +92,8 @@ export async function getUserStats(guildId: string, userId: string, days: number
     voiceSessions: voiceSessions._count.id,
     voiceTotalMs: Number(voiceSessions._sum.durationMs || 0),
     topChannels: topChannels.map(c => ({
-      channelId: c.channelId,
-      messages: c._sum.messages || 0,
+      channelId: c.topChannelId || '',
+      messages: c._count?.topChannelId || 0,
     })),
     dailyBreakdown,
   };

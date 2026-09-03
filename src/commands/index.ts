@@ -160,7 +160,6 @@ registerCommand({
 
     const allUsers = await queries.getTopUsers(msg.guild!.id, 30, 9999);
     const rank = allUsers.findIndex(u => u.userId === targetUser.id) + 1 || allUsers.length;
-    const hourly = await queries.getPeakHours(msg.guild!.id, 30);
     const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
 
     const weekdayMsgs = Array(7).fill(0);
@@ -169,8 +168,14 @@ registerCommand({
       const idx = dow === 0 ? 6 : dow - 1;
       weekdayMsgs[idx] += d.messages;
     }
+
+    // Build hourly data from dailyBreakdown (approximate per-user hourly from topHour)
     const hourlyMsgs = Array(24).fill(0);
-    for (const h of hourly) hourlyMsgs[h.hour] = h.messages;
+    for (const d of stats.dailyBreakdown) {
+      if (d.topHour != null && d.messages > 0) {
+        hourlyMsgs[d.topHour] += d.messages;
+      }
+    }
 
     const resolvedChannels = stats.topChannels.map(c => ({
       name: resolveChannelName(msg.guild!, c.channelId),
@@ -178,14 +183,18 @@ registerCommand({
       voiceMs: 0,
     }));
 
+    const topChannelName = resolvedChannels.length > 0 ? resolvedChannels[0].name : '—';
+
+    const avatarUrl = targetUser.displayAvatarURL({ extension: 'png', size: 128 });
+
     const buf = await renderUserStats({
-      user: { username: targetUser.username, avatarUrl: targetUser.displayAvatarURL() },
+      user: { username: targetUser.username, avatarUrl },
       rank, totalMembers: msg.guild!.memberCount,
       totalMessages: stats.totalMessages, totalVoiceMs: stats.totalVoiceMs,
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter(d => d.messages > 0).length,
       totalDays: 30, topChannels: resolvedChannels,
       dailyMessages: stats.dailyBreakdown.map(d => d.messages),
-      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile,
+      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile, topChannelName,
       msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
       voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
     });
