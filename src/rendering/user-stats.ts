@@ -113,7 +113,10 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   // Activity by Hour — smooth area chart (12-hour AM/PM)
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
-  panelClip(ctx, tl);
+  // Clip to content area only (below header)
+  const tlContentY = panelContentY(tl);
+  const tlContentH = tl.h - 40;
+  panelClip(ctx, { x: tl.x, y: tlContentY, w: tl.w, h: tlContentH });
   panelHeader(ctx, tl, 'Activity by Hour');
 
   const hourlyData = d.hourlyMessages || Array(24).fill(0);
@@ -121,22 +124,36 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   const yAxisMax = Math.ceil(maxActivity / 5) * 5 || 5;
 
   const chartX = tl.x + 50;
-  const chartY = panelContentY(tl);
+  const chartY = tlContentY;
   const chartW = tl.w - 70;
-  const chartH = tl.h - 55;
+  const chartH = tlContentH - 15;
   const topPad = 20;
   const drawH = chartH - topPad - 20;
 
-  // Y-axis grid + labels
+  // Y-axis grid + labels (drawn OUTSIDE clip)
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((yAxisMax * i) / ySteps);
     const yy = chartY + topPad + drawH - (i / ySteps) * drawH;
     text(ctx, String(val), chartX - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+  }
+
+  // Clip to exact chart inner bounds
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(chartX, chartY + topPad, chartW, drawH);
+  ctx.clip();
+
+  // Grid lines INSIDE clip using proper path
+  for (let i = 0; i <= ySteps; i++) {
+    const yy = chartY + topPad + drawH - (i / ySteps) * drawH;
     if (i > 0) {
-      ctx.setLineDash?.([4, 4]);
-      fillRect(ctx, chartX, yy, chartW, 1, T.chartGrid);
-      ctx.setLineDash?.([]);
+      ctx.beginPath();
+      ctx.moveTo(chartX, yy);
+      ctx.lineTo(chartX + chartW, yy);
+      ctx.strokeStyle = T.chartGrid;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
   }
 
@@ -146,12 +163,6 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     px: chartX + idx * stepX,
     py: chartY + topPad + drawH - (val / yAxisMax) * drawH,
   }));
-
-  // Clip to panel
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(chartX - 4, chartY - 5, chartW + 8, chartH + 10);
-  ctx.clip();
 
   // Crimson gradient fill
   const gradient = ctx.createLinearGradient(0, chartY + topPad, 0, chartY + topPad + drawH);

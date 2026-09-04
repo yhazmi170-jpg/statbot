@@ -16,12 +16,15 @@ export async function renderTopUsers(guildName: string, period: string, users: R
 
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
-  panelClip(ctx, tl);
+  // Clip to content area only
+  const tlContentY = panelContentY(tl);
+  const tlContentH = tl.h - 40;
+  panelClip(ctx, { x: tl.x, y: tlContentY, w: tl.w, h: tlContentH });
   panelHeader(ctx, tl, 'Leaderboard', `${users.length} users`);
   const maxMsg = users[0]?.messages || 1;
-  const rowH = Math.floor((tl.h - 44) / Math.min(users.length, 14));
+  const rowH = Math.floor((tlContentH - 4) / Math.min(users.length, 14));
   for (let i = 0; i < Math.min(users.length, 14); i++) {
-    const ry = panelContentY(tl) + i * rowH;
+    const ry = tlContentY + i * rowH;
     const u = users[i];
     const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
@@ -36,14 +39,16 @@ export async function renderTopUsers(guildName: string, period: string, users: R
 
   const tr = PANELS.topRight;
   panelBg(ctx, tr);
-  panelClip(ctx, tr);
+  const trContentY = panelContentY(tr);
+  const trContentH = tr.h - 40;
+  panelClip(ctx, { x: tr.x, y: trContentY, w: tr.w, h: trContentH });
   panelHeader(ctx, tr, 'Insights');
   const topUser = users[0];
   const avg = users.length > 0 ? Math.round(totalMsgs / users.length) : 0;
   const topShare = totalMsgs > 0 ? ((topUser?.messages || 0) / totalMsgs * 100).toFixed(1) : '0';
   const voiceTop = users.filter(u => u.voiceMs > 0).sort((a, b) => b.voiceMs - a.voiceMs).slice(0, 5);
 
-  let ry = panelContentY(tr) + 4;
+  let ry = trContentY + 4;
   text(ctx, 'TOP USER', tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim }); ry += 20;
   fitText(ctx, topUser?.userId || '—', tr.x + 16, ry, tr.w - 40, { size: 22, weight: 700, color: T.text }); ry += 28;
   text(ctx, `${numStr(topUser?.messages || 0)} messages  •  ${topShare}% of total`, tr.x + 16, ry, { size: 14, weight: 500, color: T.textMuted }); ry += 32;
@@ -68,9 +73,11 @@ export async function renderTopUsers(guildName: string, period: string, users: R
   const br = PANELS.bottomRight;
   const fullW = bl.w + GAP + br.w;
   panelBg(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
-  panelClip(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
+  const blContentY = panelContentY(bl);
+  const blContentH = bl.h - 40;
+  panelClip(ctx, { x: bl.x, y: blContentY, w: fullW, h: blContentH });
   panelHeader(ctx, { x: bl.x, y: bl.y, w: fullW }, 'Distribution');
-  const pctBarY = panelContentY(bl) + 8;
+  const pctBarY = blContentY + 8;
   text(ctx, 'Message share across top users', bl.x + 16, pctBarY, { size: 14, weight: 500, color: T.textMuted });
   let barX = bl.x + 16;
   const barW = fullW - 32;

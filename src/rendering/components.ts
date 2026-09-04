@@ -161,11 +161,57 @@ export function panelContentY(pos: { y: number }): number {
   return pos.y + 40;
 }
 
-// ─── ROW ITEMS (Leaderboards) ──────────────────────────
+// ─── SAFE USERNAME RENDERING ───────────────────────────────
+
+export function getSafeDisplayName(member: {
+  displayName?: string;
+  globalName?: string;
+  username: string;
+}, ctx: any, font: string, maxWidth: number): string {
+  const candidates = [
+    member.displayName,
+    member.globalName,
+    member.username,
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    const sanitized = sanitizeDisplayName(candidate);
+    if (sanitized && sanitized !== 'channel') {
+      // Test if we can render it cleanly
+      ctx.font = font;
+      const metrics = ctx.measureText(sanitized);
+      // Check for replacement characters or excessive unknown glyphs
+      if (!sanitized.includes('\uFFFD') && metrics.width > 0) {
+        return fitTextWidth(ctx, sanitized, maxWidth);
+      }
+    }
+  }
+  return 'Unknown User';
+}
+
+function sanitizeDisplayName(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/<a?:[a-zA-Z0-9_]+:[0-9]+>/g, '') // Discord custom emoji
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width chars
+    .replace(/[\uFFFD]/g, '') // Replacement chars
+    .normalize('NFC')
+    .trim();
+}
+
+function fitTextWidth(ctx: any, str: string, maxWidth: number): string {
+  if (ctx.measureText(str).width <= maxWidth) return str;
+  let s = str;
+  while (s.length > 0 && ctx.measureText(s + '…').width > maxWidth) {
+    s = s.slice(0, -1);
+  }
+  return s + '…';
+}
 
 export function rowItem(ctx: any, x: number, y: number, w: number, h: number, opts: {
   rank?: number; rankColor?: string; label: string; value: string;
   barPct?: number; isLast?: boolean;
+  member?: { displayName?: string; globalName?: string; username: string };
 }) {
   // Alternating row background
   if (opts.rank !== undefined && opts.rank % 2 === 1) {
@@ -184,7 +230,17 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
 
   const nameX = opts.rank !== undefined ? rankX + 38 : x + 12;
   const maxLabelW = w - (nameX - x) - 16 - 100;
-  fitText(ctx, opts.label, nameX, y + h / 2 - 10, maxLabelW, { size: 16, weight: 500, color: T.text });
+
+  // Safe username rendering
+  let displayLabel = opts.label;
+  if (opts.member) {
+    const font = `500 16px ${fontFamily(500)}`;
+    displayLabel = getSafeDisplayName(opts.member, ctx, font, maxLabelW);
+  } else {
+    displayLabel = fitTextWidth(ctx, opts.label, maxLabelW);
+  }
+
+  fitText(ctx, displayLabel, nameX, y + h / 2 - 10, maxLabelW, { size: 16, weight: 500, color: T.text });
 
   text(ctx, opts.value, x + w - 16, y + h / 2 - 10, { size: 16, weight: 700, color: T.accentBright, align: 'right' });
 
