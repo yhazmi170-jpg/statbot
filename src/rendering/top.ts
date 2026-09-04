@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr, durStr } from './theme.js';
-import { headerBanner, panelBg, panelHeader, panelContentY, rowItem, footer, fitText, sanitizeText } from './components.js';
+import { headerBanner, panelBg, panelHeader, panelContentY, rowItem, footer, fitText, sanitizeText, panelClip, panelRestore } from './components.js';
 
 interface Row { userId: string; messages: number; voiceMs: number }
 
@@ -16,6 +16,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
 
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
+  panelClip(ctx, tl);
   panelHeader(ctx, tl, 'Leaderboard', `${users.length} users`);
   const maxMsg = users[0]?.messages || 1;
   const rowH = Math.floor((tl.h - 44) / Math.min(users.length, 14));
@@ -31,9 +32,11 @@ export async function renderTopUsers(guildName: string, period: string, users: R
       isLast: i === Math.min(users.length, 14) - 1,
     });
   }
+  panelRestore(ctx);
 
   const tr = PANELS.topRight;
   panelBg(ctx, tr);
+  panelClip(ctx, tr);
   panelHeader(ctx, tr, 'Insights');
   const topUser = users[0];
   const avg = users.length > 0 ? Math.round(totalMsgs / users.length) : 0;
@@ -59,11 +62,13 @@ export async function renderTopUsers(guildName: string, period: string, users: R
       ry += 32;
     }
   }
+  panelRestore(ctx);
 
   const bl = PANELS.bottomLeft;
   const br = PANELS.bottomRight;
   const fullW = bl.w + GAP + br.w;
   panelBg(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
+  panelClip(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
   panelHeader(ctx, { x: bl.x, y: bl.y, w: fullW }, 'Distribution');
   const pctBarY = panelContentY(bl) + 8;
   text(ctx, 'Message share across top users', bl.x + 16, pctBarY, { size: 14, weight: 500, color: T.textMuted });
@@ -77,6 +82,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
     fillRect(ctx, barX, pctBarY + 28, w, barH, colors[i % colors.length], i === 0 ? 6 : 0);
     barX += w;
   }
+  panelRestore(ctx);
 
   footer(ctx, 'StatBot  •  m?help for commands');
   return canvas.toBuffer('image/png');

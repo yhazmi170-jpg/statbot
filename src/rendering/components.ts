@@ -127,6 +127,19 @@ export function panelBg(ctx: any, pos: { x: number; y: number; w: number; h: num
   drawCard(ctx, pos.x, pos.y, pos.w, pos.h);
 }
 
+// Clip drawing to a panel's bounds — call after panelBg, before drawing content
+export function panelClip(ctx: any, pos: { x: number; y: number; w: number; h: number }) {
+  ctx.save();
+  ctx.beginPath();
+  rr(ctx, pos.x, pos.y, pos.w, pos.h, THEME.borderRadius);
+  ctx.clip();
+}
+
+// Restore after panelClip — call before next panelBg
+export function panelRestore(ctx: any) {
+  ctx.restore();
+}
+
 export function panelHeader(ctx: any, pos: { x: number; y: number; w: number }, title: string, subtitle?: string) {
   const headerH = 40;
 
@@ -323,15 +336,25 @@ export function barChart(ctx: any, x: number, y: number, w: number, h: number, d
   const topPad = 20;
   const chartH = h - topPad - 20;
 
+  // Y-axis labels OUTSIDE clip
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((max * i) / ySteps);
     const yy = y + topPad + chartH - (i / ySteps) * chartH;
     text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+  }
+
+  // Clip to chart area
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  // Grid lines INSIDE clip
+  for (let i = 0; i <= ySteps; i++) {
+    const yy = y + topPad + chartH - (i / ySteps) * chartH;
     if (i > 0) {
-      ctx.setLineDash?.([4, 4]);
       fillRect(ctx, x, yy, w, 1, T.chartGrid);
-      ctx.setLineDash?.([]);
     }
   }
 
@@ -352,6 +375,8 @@ export function barChart(ctx: any, x: number, y: number, w: number, h: number, d
       text(ctx, String(data[i]), bx + barW / 2, by - 16, { size: 11, weight: 600, color: T.textMuted, align: 'center' });
     }
   }
+
+  ctx.restore();
 }
 
 // ─── LINE CHART ────────────────────────────────────────
@@ -366,15 +391,25 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
   const topPad = 20;
   const chartH = h - topPad - 20;
 
+  // Y-axis labels OUTSIDE clip
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((max * i) / ySteps);
     const yy = y + topPad + chartH - (i / ySteps) * chartH;
     text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+  }
+
+  // Clip to chart area
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  // Grid lines INSIDE clip
+  for (let i = 0; i <= ySteps; i++) {
+    const yy = y + topPad + chartH - (i / ySteps) * chartH;
     if (i > 0) {
-      ctx.setLineDash?.([4, 4]);
       fillRect(ctx, x, yy, w, 1, T.chartGrid);
-      ctx.setLineDash?.([]);
     }
   }
 
@@ -383,8 +418,7 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
   for (let i = 0; i < n; i++) {
     const px = x + (i / (n - 1)) * w;
     const py = y + topPad + chartH - (data[i] / max) * chartH;
-    if (i === 0) ctx.lineTo(px, py);
-    else ctx.lineTo(px, py);
+    ctx.lineTo(px, py);
   }
   ctx.lineTo(x + w, y + topPad + chartH);
   ctx.closePath();
@@ -403,6 +437,9 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
   ctx.lineJoin = 'round';
   ctx.stroke();
 
+  ctx.restore();
+
+  // X-axis labels OUTSIDE clip
   if (opts?.labels && opts.labels.length > 0) {
     const step = Math.max(1, Math.floor(n / 12));
     for (let i = 0; i < n; i += step) {

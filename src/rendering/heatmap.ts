@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, panelBg, panelHeader, panelContentY, heatmap, footer, formatPeakHour } from './components.js';
+import { headerBanner, panelBg, panelHeader, panelContentY, heatmap, footer, formatPeakHour, panelClip, panelRestore } from './components.js';
 
 interface Data { guildName: string; grid: number[][] }
 
@@ -25,8 +25,10 @@ export async function renderHeatmap(d: Data): Promise<Buffer> {
   const fullH = H - PAD - 75 - 15 - GAP - 25;
   const panelY = PAD + 75 + 15;
   panelBg(ctx, { x: PAD, y: panelY, w: fullW, h: fullH });
+  panelClip(ctx, { x: PAD, y: panelY, w: fullW, h: fullH });
   panelHeader(ctx, { x: PAD, y: panelY, w: fullW }, 'Hourly Activity', `${numStr(peakVal)} messages at peak`);
   heatmap(ctx, PAD + 20, panelContentY({ y: panelY }), fullW - 40, fullH - 55, d.grid);
+  panelRestore(ctx);
 
   footer(ctx, 'StatBot  •  m?help for commands');
   return canvas.toBuffer('image/png');

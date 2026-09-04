@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer, COL_GAP, sanitizeText } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, heatmap, footer, COL_GAP, sanitizeText, panelClip, panelRestore } from './components.js';
 
 interface ReportData {
   type: 'weekly' | 'monthly';
@@ -35,12 +35,15 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
 
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
+  panelClip(ctx, tl);
   panelHeader(ctx, tl, 'Daily Messages');
   barChart(ctx, tl.x + 50, panelContentY(tl), tl.w - 70, tl.h - 55,
     d.dailyMessages, { labels: d.dailyMessages.map((_, i) => `${i + 1}`), showValues: false });
+  panelRestore(ctx);
 
   const tr = PANELS.topRight;
   panelBg(ctx, tr);
+  panelClip(ctx, tr);
   panelHeader(ctx, tr, 'Top Users');
   const maxMsg = d.topUsers[0]?.messages || 1;
   const userRowH = Math.floor((tr.h - 44) / Math.min(d.topUsers.length, 10));
@@ -56,9 +59,11 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
       isLast: i === Math.min(d.topUsers.length, 10) - 1,
     });
   }
+  panelRestore(ctx);
 
   const bl = PANELS.bottomLeft;
   panelBg(ctx, bl);
+  panelClip(ctx, bl);
   panelHeader(ctx, bl, 'Top Channels');
   const maxCh = d.topChannels[0]?.messages || 1;
   const chRowH = Math.floor((bl.h - 44) / Math.min(d.topChannels.length, 10));
@@ -74,9 +79,11 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
       isLast: i === Math.min(d.topChannels.length, 10) - 1,
     });
   }
+  panelRestore(ctx);
 
   const br = PANELS.bottomRight;
   panelBg(ctx, br);
+  panelClip(ctx, br);
   panelHeader(ctx, br, 'Period Summary');
   const net = d.joins - d.leaves;
   const summaryItems = [
@@ -93,6 +100,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     ry += 38;
     fillRect(ctx, br.x + 16, ry - 8, br.w - 32, 1, T.borderSubtle);
   }
+  panelRestore(ctx);
 
   footer(ctx, 'StatBot  •  m?help for commands');
   return canvas.toBuffer('image/png');

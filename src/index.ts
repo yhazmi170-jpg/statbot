@@ -1,9 +1,8 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { createServer } from 'http';
-import { mkdirSync } from 'fs';
 import dns from 'dns';
 import { config } from './config.js';
-import { prisma, log, ensureGuild, startBackup } from './database/index.js';
+import { prisma, log, ensureGuild, verifyDatabase, shutdownDatabase } from './database/index.js';
 import { onMessageCreate, flushMessages } from './collectors/messages.js';
 import { onVoiceStateUpdate, flushVoiceSessions } from './collectors/voice.js';
 import { onGuildMemberAdd, onGuildMemberRemove } from './collectors/members.js';
@@ -12,9 +11,6 @@ import { startReportService } from './services/reports.js';
 import { importLegacyData } from './services/legacy-import.js';
 
 dns.setDefaultResultOrder('ipv4first');
-
-// Ensure data directory exists for SQLite
-try { mkdirSync('./data', { recursive: true }); } catch {}
 
 const port = parseInt(process.env.PORT || '3000');
 
@@ -79,38 +75,73 @@ const client = new Client({
   ],
 });
 
-client.once(Events.ClientReady, async (c) => {
-  log.info(`Logged in as ${c.user.tag}`);
+// ─── STARTUP SEQUENCE ───────────────────────────────────
+// 1. Verify DB  2. Login Discord  3. Sync guilds  4. Import legacy  5. Collectors  6. Reports
 
-  // Sync guilds
+async function startup() {
+  // Step 1: Verify database
+  log.info('[Startup] Step 1: Verify database...');
+  await verifyDatabase();
+
+  // Step 2: Login Discord
+  log.info('[Startup] Step 2: Login Discord...');
+  try {
+    await client.login(config.token);
+  } catch (err: any) {
+    log.error({ err: err.message }, '[Startup] Discord login failed, retrying...');
+    setTimeout(async () => {
+      try { await client.login(config.token); } catch (e: any) {
+        log.error({ err: e.message }, '[Startup] Retry failed, exiting');
+        process.exit(1);
+      }
+    }, 30_000);
+    return;
+  }
+}
+
+client.once(Events.ClientReady, async (c) => {
+  log.info(`[Startup] Step 3: Logged in as ${c.user.tag}`);
+
+  // Step 3: Sync guilds
   for (const [id, guild] of c.guilds.cache) {
     await ensureGuild(id, guild.name, guild.iconURL() || undefined).catch(() => {});
   }
+  log.info(`[Startup] Synced ${c.guilds.cache.size} guilds`);
 
-  // DM owner that bot is online
+  // Step 4: Import legacy data
+  log.info('[Startup] Step 4: Legacy import...');
+  for (const [, guild] of c.guilds.cache) {
+    try {
+      const result = await importLegacyData(guild);
+      log.info(`[Startup] Legacy import result: ${JSON.stringify(result)}`);
+    } catch (err: any) {
+      log.error({ err: err.message }, '[Startup] Legacy import failed');
+    }
+  }
+
+  // Step 5: Post-import DB verification
+  log.info('[Startup] Step 5: Post-import DB verification...');
+  const p = getPrisma();
+  const legacyCount = await p.legacyUserStats.count();
+  const linkedCount = await p.legacyUserStats.count({ where: { linked: true } });
+  log.info(`[Startup] DB legacy total: ${legacyCount}, linked: ${linkedCount}`);
+
+  // Step 6: Reports + DM owner
+  startReportService(c);
   const OWNER_ID = config.ownerId;
   try {
     const owner = await c.users.fetch(OWNER_ID);
-    await owner.send(`Statbot is online as **${c.user.tag}** in ${c.guilds.cache.size} server(s).`).catch(() => {});
-    log.info(`Sent online DM to owner`);
-  } catch (err: any) {
-    log.warn({ err: err.message }, 'Failed to DM owner');
-  }
+    await owner.send(`Statbot v3 online as **${c.user.tag}** in ${c.guilds.cache.size} server(s). PostgreSQL connected.`).catch(() => {});
+  } catch {}
 
-  startReportService(client);
-
-  // Run legacy import for each guild
-  for (const [, guild] of c.guilds.cache) {
-    importLegacyData(guild).catch(err => log.error({ err: err.message }, 'Legacy import failed'));
-  }
-
-  // Start GitHub backup
-  if (config.backup.githubToken && config.backup.githubRepo) {
-    startBackup(config.backup.intervalMs);
-  }
-
-  log.info(`Tracking ${c.guilds.cache.size} guilds, ${getCommands().length} commands ready`);
+  log.info(`[Startup] Complete. Tracking ${c.guilds.cache.size} guilds, ${getCommands().length} commands ready`);
 });
+
+function getPrisma() {
+  return (globalThis as any)._prisma || prisma;
+}
+
+// ─── EVENT HANDLERS ─────────────────────────────────────
 
 client.on(Events.Error, (err: any) => log.error({ err: err.message }, 'Discord client error'));
 client.on(Events.Warn, (msg: string) => log.warn({ msg }, 'Discord warning'));
@@ -118,7 +149,6 @@ client.on(Events.Warn, (msg: string) => log.warn({ msg }, 'Discord warning'));
 client.on(Events.MessageCreate, async (msg) => {
   if (!msg.guild || msg.author.bot) return;
 
-  // Check for prefix
   const guild = await prisma.guild.findUnique({ where: { id: msg.guild.id } }).catch(() => null);
   const prefix = guild?.prefix || config.defaultPrefix;
 
@@ -126,7 +156,6 @@ client.on(Events.MessageCreate, async (msg) => {
     await handleCommand(msg, prefix);
   }
 
-  // Track message
   onMessageCreate(msg);
 });
 
@@ -147,52 +176,24 @@ client.on(Events.GuildCreate, async (guild) => {
   log.info({ guild: guild.name }, 'Joined guild');
 });
 
-// Graceful shutdown
+// ─── SHUTDOWN ───────────────────────────────────────────
+
 const shutdown = async () => {
-  log.info('Shutting down...');
+  log.info('[Shutdown] Flushing pending data...');
   flushMessages();
   await flushVoiceSessions();
-  await prisma.$disconnect();
+  await shutdownDatabase();
   client.destroy();
+  log.info('[Shutdown] Complete');
   process.exit(0);
 };
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-// Login - non-blocking (login may hang on Render, don't let it block HTTP)
-log.info({ tokenLen: config.token.length, tokenPrefix: config.token.substring(0, 10) }, 'Attempting Discord login...');
+// ─── START ──────────────────────────────────────────────
 
-let loginDone = false;
-
-client.once(Events.ClientReady, () => {
-  loginDone = true;
-  log.info('ClientReady fired');
+startup().catch(err => {
+  log.error({ err: err.message }, 'Startup failed');
+  process.exit(1);
 });
-
-// Login in background — don't await
-client.login(config.token).then(() => {
-  log.info('client.login() resolved');
-}).catch((err: any) => {
-  log.error({ err: err.message }, 'Discord login failed');
-});
-
-// Watchdog: if login hangs, retry
-const MAX_RETRIES = 15;
-let retries = 0;
-const loginWatchdog = setInterval(() => {
-  if (loginDone) {
-    clearInterval(loginWatchdog);
-    return;
-  }
-  retries++;
-  if (retries >= MAX_RETRIES) {
-    log.error(`Login failed after ${MAX_RETRIES} attempts, exiting`);
-    clearInterval(loginWatchdog);
-    process.exit(1);
-  }
-  log.warn(`Login attempt ${retries}/${MAX_RETRIES}...`);
-  client.login(config.token).catch((err: any) => {
-    log.error({ err: err.message }, `Retry ${retries} failed`);
-  });
-}, 45_000);

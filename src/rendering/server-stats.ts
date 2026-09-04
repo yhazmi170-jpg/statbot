@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, areaLineChart, rowItem, heatmap, footer, sanitizeText, formatPeakHour } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, areaLineChart, rowItem, heatmap, footer, sanitizeText, formatPeakHour, panelClip, panelRestore } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
 interface Hourly { hour: number; messages: number }
@@ -75,14 +75,17 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
 
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
-  panelHeader(ctx, tl, 'Message Activity', 'Last 7 Days');
+  panelClip(ctx, tl);
+  panelHeader(ctx, tl, 'Message Activity', period);
   areaLineChart(ctx, tl.x + 50, panelContentY(tl), tl.w - 70, tl.h - 55,
     hourlyActivity.map(h => h.messages), {
       labels: hourlyActivity.map(h => `${String(h.hour).padStart(2, '0')}`),
     });
+  panelRestore(ctx);
 
   const tr = PANELS.topRight;
   panelBg(ctx, tr);
+  panelClip(ctx, tr);
   panelHeader(ctx, tr, 'Top Users', `${d.topUsers.length} users`);
   const maxMsg = d.topUsers[0]?.messages || 1;
   const userRowH = Math.floor((tr.h - 44) / Math.min(d.topUsers.length, 12));
@@ -100,9 +103,11 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
       isLast: i === Math.min(d.topUsers.length, 12) - 1,
     });
   }
+  panelRestore(ctx);
 
   const bl = PANELS.bottomLeft;
   panelBg(ctx, bl);
+  panelClip(ctx, bl);
   panelHeader(ctx, bl, 'Top Channels', `${topChannels.length} channels`);
   const maxCh = topChannels[0]?.messages || 1;
   const chRowH = Math.floor((bl.h - 44) / Math.min(topChannels.length, 12));
@@ -120,11 +125,14 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
       isLast: i === Math.min(topChannels.length, 12) - 1,
     });
   }
+  panelRestore(ctx);
 
   const br = PANELS.bottomRight;
   panelBg(ctx, br);
+  panelClip(ctx, br);
   panelHeader(ctx, br, 'Activity Heatmap', 'Hourly Activity');
   heatmap(ctx, br.x + 16, panelContentY(br), br.w - 32, br.h - 55, heatmapGrid);
+  panelRestore(ctx);
 
   footer(ctx, 'StatBot  •  m?help for commands');
 

@@ -1,6 +1,6 @@
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr, durStr, THEME } from './theme.js';
-import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer, sanitizeText } from './components.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, barChart, rowItem, footer, sanitizeText, panelClip, panelRestore } from './components.js';
 
 interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
 interface Data {
@@ -113,6 +113,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   // Activity by Hour — smooth area chart (12-hour AM/PM)
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
+  panelClip(ctx, tl);
   panelHeader(ctx, tl, 'Activity by Hour');
 
   const hourlyData = d.hourlyMessages || Array(24).fill(0);
@@ -186,21 +187,25 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     const labelX = chartX + i * stepX;
     text(ctx, label, labelX, chartY + topPad + drawH + 8, { size: 11, weight: 500, color: T.textDim, align: 'center' });
   }
+  panelRestore(ctx);
 
   // Activity by Weekday chart
   const tr = PANELS.topRight;
   panelBg(ctx, tr);
+  panelClip(ctx, tr);
   panelHeader(ctx, tr, 'Activity by Weekday');
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const wdYMax = Math.ceil(Math.max(...d.weekdayMessages, 1) / 5) * 5 || 5;
   barChart(ctx, tr.x + 50, panelContentY(tr), tr.w - 70, tr.h - 55,
     d.weekdayMessages, { labels: dayLabels, showValues: true, color: T.accent, maxVal: wdYMax });
+  panelRestore(ctx);
 
   // Top Channels panel — 2-column grid, max 6
   const bl = PANELS.bottomLeft;
   const br = PANELS.bottomRight;
   const fullW = bl.w + GAP + br.w;
   panelBg(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
+  panelClip(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
   panelHeader(ctx, { x: bl.x, y: bl.y, w: fullW }, 'Top Channels', `${Math.min(topChannels.length, 6)} channels`);
 
   const displayChannels = topChannels.slice(0, 6);
@@ -229,6 +234,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
       });
     }
   }
+  panelRestore(ctx);
 
   footer(ctx, 'StatBot  •  m?help for commands');
 

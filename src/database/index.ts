@@ -1,7 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import pino from 'pino';
-import { execSync } from 'child_process';
-import { existsSync } from 'fs';
 
 export const log = pino({ name: 'statbot', level: 'info' });
 
@@ -42,78 +40,41 @@ export async function ensureChannel(id: string, name: string, type: string, guil
   });
 }
 
-// ─── GITHUB BACKUP ──────────────────────────────────────
+// ─── DATABASE STARTUP VERIFICATION ──────────────────────
 
-let backupTimer: NodeJS.Timeout | null = null;
-let backupRunning = false;
+export async function verifyDatabase() {
+  const p = getPrisma();
+  const dbUrl = process.env.DATABASE_URL || '';
+  const provider = dbUrl.startsWith('postgresql') ? 'postgresql' : 'sqlite';
 
-function getDbPath(): string {
-  const url = process.env.DATABASE_URL || '';
-  const match = url.match(/file:(.+)/);
-  return match ? match[1] : './data/statbot.db';
-}
+  log.info(`[Database] provider: ${provider}`);
 
-function backupDb() {
-  if (backupRunning) return;
-  backupRunning = true;
   try {
-    const dbPath = getDbPath();
-    if (!existsSync(dbPath)) {
-      log.warn('DB file not found for backup: ' + dbPath);
-      return;
-    }
-    const githubToken = process.env.GITHUB_TOKEN;
-    const githubRepo = process.env.GITHUB_REPO;
-    if (!githubToken || !githubRepo) {
-      log.warn('GITHUB_TOKEN or GITHUB_REPO not set, skipping backup');
-      return;
-    }
+    await p.$connect();
+    log.info('[Database] connected');
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const backupPath = `data/statbot-${timestamp}.db`;
+    const [guildCount, userStatsCount, legacyCount] = await Promise.all([
+      p.guild.count(),
+      p.userDailyStats.count(),
+      p.legacyUserStats.count(),
+    ]);
 
-    execSync(`cp "${dbPath}" "${backupPath}"`);
+    log.info(`[Database] guild count: ${guildCount}`);
+    log.info(`[Database] user stats rows: ${userStatsCount}`);
+    log.info(`[Database] legacy rows: ${legacyCount}`);
 
-    const content = require('fs').readFileSync(backupPath).toString('base64');
-    const sha = execSync(
-      `curl -s -H "Authorization: token ${githubToken}" "https://api.github.com/repos/${githubRepo}/contents/${backupPath}"`,
-      { timeout: 15000 }
-    ).toString().trim();
-
-    let currentSha = '';
-    try {
-      const parsed = JSON.parse(sha);
-      if (parsed.sha) currentSha = parsed.sha;
-    } catch {}
-
-    const body = JSON.stringify({
-      message: `Backup statbot DB ${timestamp}`,
-      content,
-      ...(currentSha ? { sha: currentSha } : {}),
-    });
-
-    execSync(
-      `curl -s -X PUT -H "Authorization: token ${githubToken}" -H "Content-Type: application/json" -d '${body}' "https://api.github.com/repos/${githubRepo}/contents/${backupPath}"`,
-      { timeout: 30000 }
-    );
-
-    // Cleanup local backup
-    try { require('fs').unlinkSync(backupPath); } catch {}
-    log.info(`Backup completed: ${backupPath}`);
+    return { guildCount, userStatsCount, legacyCount };
   } catch (err: any) {
-    log.error({ err: err.message }, 'Backup failed');
-  } finally {
-    backupRunning = false;
+    log.error({ err: err.message }, '[Database] verification failed');
+    throw err;
   }
 }
 
-export function startBackup(intervalMs = 300_000) {
-  // Initial backup after 60s
-  setTimeout(backupDb, 60_000);
-  backupTimer = setInterval(backupDb, intervalMs);
-  log.info(`GitHub backup started (interval: ${intervalMs / 1000}s)`);
-}
+// ─── SHUTDOWN HANDLER ───────────────────────────────────
 
-export function stopBackup() {
-  if (backupTimer) clearInterval(backupTimer);
+export async function shutdownDatabase() {
+  log.info('[Database] shutting down...');
+  const p = getPrisma();
+  await p.$disconnect();
+  log.info('[Database] disconnected');
 }
