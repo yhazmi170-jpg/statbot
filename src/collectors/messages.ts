@@ -1,8 +1,9 @@
-import { Message, TextChannel } from 'discord.js';
+import { Message, TextChannel, ChannelType } from 'discord.js';
 import { prisma, ensureUser, ensureChannel, ensureGuild, log } from '../database/index.js';
 
-const buffer: { guildId: string; userId: string; channelId: string; timestamp: Date }[] = [];
+const buffer: { guildId: string; userId: string; channelId: string; channelName: string; username: string; timestamp: Date }[] = [];
 let flushTimer: NodeJS.Timeout | null = null;
+let flushCount = 0;
 
 export function onMessageCreate(msg: Message) {
   if (!msg.guild || msg.author.bot) return;
@@ -10,7 +11,15 @@ export function onMessageCreate(msg: Message) {
   const userId = msg.author.id;
   const channelId = msg.channel.id;
 
-  buffer.push({ guildId, userId, channelId, timestamp: msg.createdAt });
+  // Resolve channel name from cache
+  let channelName = 'unknown';
+  const ch = msg.guild.channels.cache.get(channelId);
+  if (ch) channelName = ch.name;
+
+  // Resolve username from cache
+  const username = msg.member?.displayName || msg.author.username || 'unknown';
+
+  buffer.push({ guildId, userId, channelId, channelName, username, timestamp: msg.createdAt });
 
   if (buffer.length >= 50) flush();
   if (!flushTimer) flushTimer = setInterval(flush, 5000);
@@ -18,7 +27,7 @@ export function onMessageCreate(msg: Message) {
 
 async function flush() {
   if (buffer.length === 0) return;
-  const batch = buffer.splice(0, 100);
+  const batch = buffer.splice(0, 200);
   if (buffer.length === 0 && flushTimer) {
     clearInterval(flushTimer);
     flushTimer = null;
@@ -29,18 +38,17 @@ async function flush() {
     const userIds = new Set(batch.map(b => b.userId));
     const channelIds = new Set(batch.map(b => b.channelId));
 
-    // Ensure parent records exist (PostgreSQL FK constraints)
+    // Ensure parent records exist (SQLite FK constraints)
     for (const g of guildIds) {
-      const entry = batch.find(b => b.guildId === g);
-      if (entry) await ensureGuild(g, entry.guildId);
+      await ensureGuild(g, 'Unknown').catch(() => {});
     }
     for (const u of userIds) {
       const entry = batch.find(b => b.userId === u);
-      if (entry) await ensureUser(u, 'unknown');
+      if (entry) await ensureUser(u, entry.username).catch(() => {});
     }
     for (const c of channelIds) {
       const entry = batch.find(b => b.channelId === c);
-      if (entry) await ensureChannel(c, 'unknown', 'text', entry.guildId);
+      if (entry) await ensureChannel(c, entry.channelName, 'text', entry.guildId).catch(() => {});
     }
 
     // Upsert aggregates
@@ -67,8 +75,12 @@ async function flush() {
       // User daily stats
       await prisma.userDailyStats.upsert({
         where: { guildId_userId_date: { guildId: entry.guildId, userId: entry.userId, date: today } },
-        create: { guildId: entry.guildId, userId: entry.userId, date: today, messages: 1 },
-        update: { messages: { increment: 1 } },
+        create: { guildId: entry.guildId, userId: entry.userId, date: today, messages: 1, topChannelId: entry.channelId, topHour: hour },
+        update: {
+          messages: { increment: 1 },
+          topChannelId: entry.channelId,
+          topHour: hour,
+        },
       }).catch(() => {});
 
       // Channel stats
@@ -77,6 +89,11 @@ async function flush() {
         create: { guildId: entry.guildId, channelId: entry.channelId, date: today, messages: 1, uniqueUsers: 1 },
         update: { messages: { increment: 1 } },
       }).catch(() => {});
+    }
+
+    flushCount++;
+    if (flushCount % 100 === 0) {
+      log.info(`Flushed ${batch.length} messages (total flushes: ${flushCount})`);
     }
   } catch (err) {
     log.error({ err }, 'Error flushing message buffer');

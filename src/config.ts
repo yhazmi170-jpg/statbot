@@ -6,6 +6,7 @@ export const config = {
   defaultPrefix: process.env.PREFIX || 'm?',
   timezone: process.env.TZ || 'UTC',
   databaseUrl: process.env.DATABASE_URL || '',
+  ownerId: process.env.OWNER_ID || '536278876247162882',
   intents: 32767 | 0,
   cacheSizes: {
     channels: 500,
@@ -19,6 +20,11 @@ export const config = {
   retention: {
     rawDays: 90,
     aggregatedDays: 365,
+  },
+  backup: {
+    githubToken: process.env.GITHUB_TOKEN || '',
+    githubRepo: process.env.GITHUB_REPO || '',
+    intervalMs: parseInt(process.env.BACKUP_INTERVAL || '300000'),
   },
 } as const;
 

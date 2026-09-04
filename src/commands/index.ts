@@ -12,6 +12,7 @@ import { renderCompare } from '../rendering/compare.js';
 import { renderInactive } from '../rendering/inactive.js';
 import { renderServerRank } from '../rendering/server-rank.js';
 import { renderWeeklyReport, renderMonthlyReport } from '../rendering/reports.js';
+import { parsePeriod } from '../utils/period.js';
 import * as queries from '../analytics/queries.js';
 
 export interface CommandContext {
@@ -62,15 +63,30 @@ function isAdmin(msg: Message): boolean {
   return msg.member?.permissions.has(PermissionFlagsBits.Administrator) || false;
 }
 
+function parsePeriodArg(args: string[]): { period?: string; days?: number } {
+  for (const arg of args) {
+    const lower = arg.toLowerCase();
+    if (['today', '1d', '7d', '14d', '30d', '90d', 'week', 'month', 'all'].includes(lower)) {
+      return { period: lower };
+    }
+    if (/^\d+$/.test(arg)) {
+      const n = parseInt(arg);
+      if (n > 0 && n <= 365) return { days: n };
+    }
+  }
+  return {};
+}
+
 // === STATS ===
 registerCommand({
   name: 'stats',
   description: 'Server statistics overview',
   category: 'Analytics',
   aliases: ['svstats', 'top'],
-  execute: async ({ msg }) => {
+  execute: async ({ msg, args }) => {
+    const { period } = parsePeriodArg(args);
     const [guildStats, hourlyByDay] = await Promise.all([
-      queries.getServerStats(msg.guild!.id),
+      queries.getServerStats(msg.guild!.id, undefined, period),
       queries.getActivityHeatmap(msg.guild!.id, 7),
     ]);
     const resolvedChannels = guildStats.topChannels.map(c => ({
@@ -82,6 +98,7 @@ registerCommand({
       userId: await resolveUserName(msg.guild!, u.userId),
       messages: u.messages,
     })));
+    const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
     const buf = await renderServerStats({
       guildName: msg.guild!.name,
       guild: { name: msg.guild!.name, memberCount: msg.guild!.memberCount },
@@ -89,6 +106,7 @@ registerCommand({
       topChannels: resolvedChannels,
       topUsers: resolvedUsers,
       hourlyByDay,
+      period: periodLabel,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'stats.png' })] });
   },
@@ -99,14 +117,18 @@ registerCommand({
   name: 'server',
   description: 'Server overview',
   category: 'Analytics',
-  execute: async ({ msg }) => {
+  execute: async ({ msg, args }) => {
     const g = msg.guild!;
-    const stats = await queries.getServerStats(g.id, 30);
-    const growth = await queries.getGrowthData(g.id, 30);
-    const peakHours = await queries.getPeakHoursAgg(g.id, 30);
-    const peakDay = getPeakDay(await queries.getActivityHeatmap(g.id, 7));
+    const { period } = parsePeriodArg(args);
+    const days = period ? parsePeriod(period).days : 30;
+    const [stats, growth] = await Promise.all([
+      queries.getServerStats(g.id, days, period),
+      queries.getGrowthData(g.id, days),
+    ]);
+    const peakHours = await queries.getPeakHours(g.id, days);
+    const heatmap = await queries.getActivityHeatmap(g.id, Math.min(days, 7));
+    const peakDay = getPeakDay(heatmap);
     const peakHour = peakHours[0] ? formatPeakHour(peakHours[0].hour) : '—';
-
     const totalJoins = growth.reduce((s, g) => s + g.joins, 0);
     const totalLeaves = growth.reduce((s, g) => s + g.leaves, 0);
 
@@ -121,7 +143,7 @@ registerCommand({
       totalMessages: stats.totalMessages,
       totalVoiceMs: stats.totalVoiceMs,
       uniqueUsers: stats.uniqueUsers,
-      msgsPerDay: stats.totalMessages / 30,
+      msgsPerDay: stats.totalMessages / days,
       peakHour,
       peakDay,
       joins: totalJoins,
@@ -131,31 +153,42 @@ registerCommand({
   },
 });
 
-// === U (replaces ME) ===
+// === U ===
 registerCommand({
   name: 'u',
   description: 'User statistics (own or admin-only for others)',
   category: 'Analytics',
   execute: async ({ msg, args }) => {
     let targetUser = msg.author;
+    const periodArgs: string[] = [];
 
-    if (args[0]) {
-      if (!isAdmin(msg)) {
-        await msg.reply({ content: '❌ You need Administrator permissions to view another member\'s statistics.' });
-        return;
+    // Separate user mention from period args
+    for (const arg of args) {
+      if (arg.startsWith('<@') || /^\d{17,20}$/.test(arg)) {
+        if (!isAdmin(msg)) {
+          await msg.reply({ content: '❌ You need Administrator permissions to view another member\'s statistics.' });
+          return;
+        }
+        const mentioned = msg.mentions.users.first() || await msg.client.users.fetch(arg).catch(() => null);
+        if (!mentioned) {
+          await msg.reply({ content: '❌ Couldn\'t find that member.' });
+          return;
+        }
+        targetUser = mentioned;
+      } else {
+        periodArgs.push(arg);
       }
-      const mentioned = msg.mentions.users.first() || await msg.client.users.fetch(args[0]).catch(() => null);
-      if (!mentioned) {
-        await msg.reply({ content: '❌ Couldn\'t find that member.' });
-        return;
-      }
-      targetUser = mentioned;
     }
 
-    const stats = await queries.getUserStats(msg.guild!.id, targetUser.id);
-    const noData = stats.totalMessages === 0 && stats.totalVoiceMs === 0;
+    const { period } = parsePeriodArg(periodArgs);
+    const days = period ? parsePeriod(period).days : 14;
 
-    const allUsers = await queries.getTopUsers(msg.guild!.id, 30, 9999);
+    const [stats, allUsers] = await Promise.all([
+      queries.getUserStats(msg.guild!.id, targetUser.id, days, period),
+      queries.getTopUsers(msg.guild!.id, days, period, 9999),
+    ]);
+
+    const noData = stats.totalMessages === 0 && stats.totalVoiceMs === 0;
     const rank = noData ? allUsers.length + 1 : (allUsers.findIndex(u => u.userId === targetUser.id) + 1 || allUsers.length);
     const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
 
@@ -166,7 +199,6 @@ registerCommand({
       weekdayMsgs[idx] += d.messages;
     }
 
-    // Build hourly data from dailyBreakdown (approximate per-user hourly from topHour)
     const hourlyMsgs = Array(24).fill(0);
     for (const d of stats.dailyBreakdown) {
       if (d.topHour != null && d.messages > 0) {
@@ -192,18 +224,18 @@ registerCommand({
       .filter((c): c is { name: string; messages: number; voiceMs: number } => c !== null)
       .slice(0, 6);
 
-    const topChannelName = resolvedChannels.length > 0 ? resolvedChannels[0].name : '—';
-
     const avatarUrl = targetUser.displayAvatarURL({ extension: 'png', size: 128 });
+    const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
 
     const buf = await renderUserStats({
       user: { username: targetUser.username, avatarUrl },
+      guildName: msg.guild!.name,
       rank, totalMembers: msg.guild!.memberCount,
       totalMessages: stats.totalMessages, totalVoiceMs: stats.totalVoiceMs,
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter(d => d.messages > 0).length,
-      totalDays: 30, topChannels: resolvedChannels,
+      totalDays: days, topChannels: resolvedChannels,
       dailyMessages: stats.dailyBreakdown.map(d => d.messages),
-      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile, topChannelName,
+      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile, topChannelName: resolvedChannels[0]?.name || '—',
       msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
       voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
     });
@@ -219,46 +251,55 @@ registerCommand({
   aliases: ['leaderboard', 'lb'],
   execute: async ({ msg, args }) => {
     let mode = 'messages';
-    let days = 30;
     let limit = 10;
+    let periodArgs: string[] = [];
 
     for (const arg of args) {
-      if (['messages', 'voice', 'activity'].includes(arg.toLowerCase())) mode = arg.toLowerCase();
-      else if (/^\d+$/.test(arg)) {
+      if (['messages', 'voice', 'activity'].includes(arg.toLowerCase())) {
+        mode = arg.toLowerCase();
+      } else if (/^\d+$/.test(arg)) {
         const n = parseInt(arg);
         if (n <= 50) limit = n;
-        else days = n;
+        else periodArgs.push(arg);
+      } else {
+        periodArgs.push(arg);
       }
     }
 
+    const { period, days: d } = parsePeriodArg(periodArgs);
+    const days = d || 14;
+
     if (mode === 'voice') {
-      const voice = await queries.getTopVoice(msg.guild!.id, days, limit);
+      const voice = await queries.getTopVoice(msg.guild!.id, days, period, limit);
       const totalVoice = voice.reduce((s, v) => s + v.voiceMs, 0);
       const resolvedUsers = await Promise.all(voice.map(async v => ({
         userId: await resolveUserName(msg.guild!, v.userId),
         messages: 0,
         voiceMs: v.voiceMs,
       })));
-      const buf = await renderTopUsers(msg.guild!.name, `Voice • Last ${days} Days`, resolvedUsers, totalVoice);
+      const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
+      const buf = await renderTopUsers(msg.guild!.name, `Voice • ${periodLabel}`, resolvedUsers, totalVoice);
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-voice.png' })] });
     } else if (mode === 'activity') {
-      const users = await queries.getServerRank(msg.guild!.id, days, limit);
+      const users = await queries.getServerRank(msg.guild!.id, days, period, limit);
       const resolvedUsers = await Promise.all(users.map(async u => ({
         userId: await resolveUserName(msg.guild!, u.userId),
         messages: u.messages,
         voiceMs: u.voiceMs,
       })));
-      const buf = await renderTopUsers(msg.guild!.name, `Activity • Last ${days} Days`, resolvedUsers, users.reduce((s, u) => s + u.messages, 0));
+      const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
+      const buf = await renderTopUsers(msg.guild!.name, `Activity • ${periodLabel}`, resolvedUsers, users.reduce((s, u) => s + u.messages, 0));
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-activity.png' })] });
     } else {
-      const users = await queries.getTopUsers(msg.guild!.id, days, limit);
+      const users = await queries.getTopUsers(msg.guild!.id, days, period, limit);
       const totalMsgs = users.reduce((s, u) => s + u.messages, 0);
       const resolvedUsers = await Promise.all(users.map(async u => ({
         userId: await resolveUserName(msg.guild!, u.userId),
         messages: u.messages,
         voiceMs: 0,
       })));
-      const buf = await renderTopUsers(msg.guild!.name, `Messages • Last ${days} Days`, resolvedUsers, totalMsgs);
+      const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
+      const buf = await renderTopUsers(msg.guild!.name, `Messages • ${periodLabel}`, resolvedUsers, totalMsgs);
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top.png' })] });
     }
   },
@@ -271,15 +312,17 @@ registerCommand({
   category: 'Analytics',
   aliases: ['ch', 'topch'],
   execute: async ({ msg, args }) => {
-    const days = parseInt(args[0]) || 30;
-    const ch = await queries.getTopChannels(msg.guild!.id, days, 10);
+    const { period, days: d } = parsePeriodArg(args);
+    const days = d || 14;
+    const ch = await queries.getTopChannels(msg.guild!.id, days, period, 10);
+    const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
     const lines = ch.map((c, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
       return `${medal} <#${c.channelId}> — ${c.messages.toLocaleString()} msgs`;
     });
     await msg.reply({
       embeds: [{
-        title: `📊 Top Channels — Last ${days} Days`,
+        title: `📊 Top Channels — ${periodLabel}`,
         description: lines.join('\n') || 'No data yet.',
         color: 0x8b0000,
         footer: { text: 'StatBot' },
@@ -294,16 +337,17 @@ registerCommand({
   description: 'Message analytics',
   category: 'Analytics',
   execute: async ({ msg, args }) => {
-    const days = parseInt(args[0]) || 30;
-    const stats = await queries.getServerStats(msg.guild!.id, days);
+    const { period, days: d } = parsePeriodArg(args);
+    const days = d || 14;
+    const stats = await queries.getServerStats(msg.guild!.id, days, period);
+    const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
     await msg.reply({
       embeds: [{
-        title: `💬 Message Analytics — Last ${days} Days`,
+        title: `💬 Message Analytics — ${periodLabel}`,
         description: [
           `**Total Messages:** ${stats.totalMessages.toLocaleString()}`,
           `**Active Users:** ${stats.uniqueUsers}`,
           `**Messages/Day:** ${Math.round(stats.totalMessages / days)}`,
-          `**Peak Hour:** ${getPeakHourFromDaily(stats.dailyStats)}`,
         ].join('\n'),
         color: 0x8b0000,
         footer: { text: 'StatBot' },
@@ -319,9 +363,11 @@ registerCommand({
   category: 'Analytics',
   aliases: ['vc'],
   execute: async ({ msg, args }) => {
-    const days = parseInt(args[0]) || 30;
-    const voice = await queries.getTopVoice(msg.guild!.id, days, 10);
+    const { period, days: d } = parsePeriodArg(args);
+    const days = d || 14;
+    const voice = await queries.getTopVoice(msg.guild!.id, days, period, 10);
     const totalMs = voice.reduce((s, v) => s + v.voiceMs, 0);
+    const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
     const lines = voice.map((v, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
       const hours = Math.floor(v.voiceMs / 3600000);
@@ -330,7 +376,7 @@ registerCommand({
     });
     await msg.reply({
       embeds: [{
-        title: `🔊 Voice Analytics — Last ${days} Days`,
+        title: `🔊 Voice Analytics — ${periodLabel}`,
         description: [
           `**Total Voice Time:** ${(totalMs / 3600000).toFixed(1)}h`,
           '',
@@ -367,7 +413,7 @@ registerCommand({
   description: 'Peak hours and days',
   category: 'Analytics',
   execute: async ({ msg }) => {
-    const peakHours = await queries.getPeakHoursAgg(msg.guild!.id, 30);
+    const peakHours = await queries.getPeakHours(msg.guild!.id, 30);
     const heatmap = await queries.getActivityHeatmap(msg.guild!.id, 7);
     const peakDay = getPeakDay(heatmap);
     const top5 = peakHours.slice(0, 5).map(h => `**${formatPeakHour(h.hour)}** — ${h.messages.toLocaleString()} msgs`).join('\n');
@@ -408,14 +454,16 @@ registerCommand({
   category: 'Analytics',
   aliases: ['memberstats'],
   execute: async ({ msg, args }) => {
-    const days = parseInt(args[0]) || 30;
+    const { period, days: d } = parsePeriodArg(args);
+    const days = d || 14;
     const growth = await queries.getGrowthData(msg.guild!.id, days);
     const totalJoins = growth.reduce((s, g) => s + g.joins, 0);
     const totalLeaves = growth.reduce((s, g) => s + g.leaves, 0);
     const net = totalJoins - totalLeaves;
+    const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
     await msg.reply({
       embeds: [{
-        title: `📈 Member Growth — Last ${days} Days`,
+        title: `📈 Member Growth — ${periodLabel}`,
         description: [
           `**Joins:** ${totalJoins}`,
           `**Leaves:** ${totalLeaves}`,
@@ -435,7 +483,8 @@ registerCommand({
   description: 'Server growth over time',
   category: 'Analytics',
   execute: async ({ msg, args }) => {
-    const days = parseInt(args[0]) || 30;
+    const { period, days: d } = parsePeriodArg(args);
+    const days = d || 14;
     const growth = await queries.getGrowthData(msg.guild!.id, days);
     const totalJoins = growth.reduce((s, g) => s + g.joins, 0);
     const totalLeaves = growth.reduce((s, g) => s + g.leaves, 0);
@@ -454,7 +503,8 @@ registerCommand({
   description: 'Compare two time periods',
   category: 'Analytics',
   execute: async ({ msg, args }) => {
-    const days = parseInt(args[0]) || 14;
+    const { period, days: d } = parsePeriodArg(args);
+    const days = d || 14;
     const data = await queries.getCompareData(msg.guild!.id, days);
     const buf = await renderCompare(
       { label: `Last ${days} Days`, ...data.current, voiceHours: data.current.voiceMs / 3600000, peakHour: '—' },
@@ -470,8 +520,9 @@ registerCommand({
   description: 'Server activity rank',
   category: 'Leaderboards',
   execute: async ({ msg, args }) => {
-    const days = parseInt(args[0]) || 30;
-    const users = await queries.getServerRank(msg.guild!.id, days, 20);
+    const { period, days: d } = parsePeriodArg(args);
+    const days = d || 14;
+    const users = await queries.getServerRank(msg.guild!.id, days, period, 20);
     const resolvedUsers = await Promise.all(users.map(async u => ({
       userId: await resolveUserName(msg.guild!, u.userId),
       messages: u.messages,
@@ -517,12 +568,12 @@ registerCommand({
     const [stats, hourlyByDay, topUsers, topChannels, prevStats] = await Promise.all([
       queries.getServerStats(msg.guild!.id, 7),
       queries.getActivityHeatmap(msg.guild!.id, 7),
-      queries.getTopUsers(msg.guild!.id, 7, 10),
-      queries.getTopChannels(msg.guild!.id, 7, 8),
+      queries.getTopUsers(msg.guild!.id, 7, undefined, 10),
+      queries.getTopChannels(msg.guild!.id, 7, undefined, 8),
       queries.getServerStats(msg.guild!.id, 14),
     ]);
     const growth = await queries.getGrowthData(msg.guild!.id, 7);
-    const peakHours = await queries.getPeakHoursAgg(msg.guild!.id, 7);
+    const peakHours = await queries.getPeakHours(msg.guild!.id, 7);
     const resolvedChannels = topChannels.map(c => ({
       name: resolveChannelName(msg.guild!, c.channelId),
       messages: c.messages,
@@ -560,12 +611,12 @@ registerCommand({
     const [stats, hourlyByDay, topUsers, topChannels, prevStats] = await Promise.all([
       queries.getServerStats(msg.guild!.id, 30),
       queries.getActivityHeatmap(msg.guild!.id, 30),
-      queries.getTopUsers(msg.guild!.id, 30, 10),
-      queries.getTopChannels(msg.guild!.id, 30, 8),
+      queries.getTopUsers(msg.guild!.id, 30, undefined, 10),
+      queries.getTopChannels(msg.guild!.id, 30, undefined, 8),
       queries.getServerStats(msg.guild!.id, 60),
     ]);
     const growth = await queries.getGrowthData(msg.guild!.id, 30);
-    const peakHours = await queries.getPeakHoursAgg(msg.guild!.id, 30);
+    const peakHours = await queries.getPeakHours(msg.guild!.id, 30);
     const resolvedChannels = topChannels.map(c => ({
       name: resolveChannelName(msg.guild!, c.channelId),
       messages: c.messages,
@@ -594,6 +645,153 @@ registerCommand({
   },
 });
 
+// === BACKFILL ===
+registerCommand({
+  name: 'backfill',
+  description: 'Populate empty daily stats from message log (admin only)',
+  category: 'Admin',
+  adminOnly: true,
+  execute: async ({ msg }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ Administrator only.' });
+      return;
+    }
+
+    const sent = await msg.reply({ content: '⏳ Backfilling daily stats from message log...' });
+
+    const guildId = msg.guild!.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Find all UserDailyStats with 0 messages but that have channelStats data
+    const emptyDays = await prisma.userDailyStats.findMany({
+      where: { guildId, messages: 0, date: { lt: today } },
+      orderBy: { date: 'asc' },
+    });
+
+    let filled = 0;
+    for (const empty of emptyDays) {
+      // Check if there's ChannelStats data for this date
+      const chStats = await prisma.channelStats.findFirst({
+        where: { guildId, date: empty.date },
+      });
+
+      if (chStats && chStats.messages > 0) {
+        // Estimate user messages from channel total (rough approximation)
+        await prisma.userDailyStats.update({
+          where: { guildId_userId_date: { guildId, userId: empty.userId, date: empty.date } },
+          data: { messages: 1 }, // Minimal estimate
+        }).catch(() => {});
+        filled++;
+      }
+    }
+
+    await sent.edit({ content: `✅ Backfill complete. Updated ${filled} empty days.` });
+  },
+});
+
+// === DATASTATUS ===
+registerCommand({
+  name: 'datastatus',
+  description: 'Show database health and stats (admin only)',
+  category: 'Admin',
+  adminOnly: true,
+  execute: async ({ msg }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ Administrator only.' });
+      return;
+    }
+
+    const start = Date.now();
+    const [guildCount, userCount, channelCount, dailyCount, hourlyCount, userDailyCount, channelStatCount, voiceCount] = await Promise.all([
+      prisma.guild.count(),
+      prisma.user.count(),
+      prisma.channel.count(),
+      prisma.guildDailyStats.count(),
+      prisma.guildHourlyStats.count(),
+      prisma.userDailyStats.count(),
+      prisma.channelStats.count(),
+      prisma.voiceSession.count(),
+    ]);
+    const latency = Date.now() - start;
+
+    const dbPath = process.env.DATABASE_URL || 'unknown';
+    const memMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+
+    await msg.reply({
+      embeds: [{
+        title: 'Database Status',
+        description: [
+          `**Query Latency:** ${latency}ms`,
+          `**DB Path:** \`${dbPath}\``,
+          '',
+          `**Guilds:** ${guildCount}`,
+          `**Users:** ${userCount}`,
+          `**Channels:** ${channelCount}`,
+          `**Daily Stats:** ${dailyCount.toLocaleString()}`,
+          `**Hourly Stats:** ${hourlyCount.toLocaleString()}`,
+          `**User Daily Stats:** ${userDailyCount.toLocaleString()}`,
+          `**Channel Stats:** ${channelStatCount.toLocaleString()}`,
+          `**Voice Sessions:** ${voiceCount.toLocaleString()}`,
+          '',
+          `**Memory:** ${memMB}MB`,
+        ].join('\n'),
+        color: 0x8b0000,
+        footer: { text: 'StatBot' },
+      }],
+    });
+  },
+});
+
+// === DEBUGSTATS ===
+registerCommand({
+  name: 'debugstats',
+  description: 'Debug tracking stats (admin only)',
+  category: 'Admin',
+  adminOnly: true,
+  execute: async ({ msg }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ Administrator only.' });
+      return;
+    }
+
+    const guildId = msg.guild!.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [todayStats, yesterdayStats, totalMsgs, totalVoice] = await Promise.all([
+      prisma.guildDailyStats.findUnique({ where: { guildId_date: { guildId, date: today } } }),
+      prisma.guildDailyStats.findUnique({
+        where: { guildId_date: { guildId, date: new Date(today.getTime() - 86400000) } },
+      }),
+      prisma.guildDailyStats.aggregate({ where: { guildId }, _sum: { totalMessages: true } }),
+      prisma.guildDailyStats.aggregate({ where: { guildId }, _sum: { totalVoiceMs: true } }),
+    ]);
+
+    await msg.reply({
+      embeds: [{
+        title: 'Debug Stats',
+        description: [
+          '**Today:**',
+          `Messages: ${todayStats?.totalMessages || 0}`,
+          `Unique Users: ${todayStats?.uniqueUsers || 0}`,
+          `Voice: ${((Number(todayStats?.totalVoiceMs || 0)) / 3600000).toFixed(1)}h`,
+          '',
+          '**Yesterday:**',
+          `Messages: ${yesterdayStats?.totalMessages || 0}`,
+          `Unique Users: ${yesterdayStats?.uniqueUsers || 0}`,
+          '',
+          '**All Time:**',
+          `Total Messages: ${Number(totalMsgs._sum.totalMessages || 0).toLocaleString()}`,
+          `Total Voice: ${(Number(totalVoice._sum.totalVoiceMs || 0) / 3600000).toFixed(1)}h`,
+        ].join('\n'),
+        color: 0x8b0000,
+        footer: { text: 'StatBot' },
+      }],
+    });
+  },
+});
+
 // === FAKE ===
 import { generateFakeServer, generateFakeUser, generateFakeReport } from '../fake/generator.js';
 import { renderFakeServerStats } from '../rendering/fake-server.js';
@@ -612,8 +810,6 @@ registerCommand({
     }
 
     const sub = args[0]?.toLowerCase();
-
-    // m?fake @user
     const mentionedUser = msg.mentions.users.first();
 
     if (mentionedUser) {
@@ -644,7 +840,6 @@ registerCommand({
       return;
     }
 
-    // Default: m?fake (server stats)
     const fakeServer = generateFakeServer();
     const buf = await renderFakeServerStats(fakeServer);
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-stats.png' })] });
@@ -753,9 +948,9 @@ registerCommand({
   description: 'Check bot latency',
   category: 'Info',
   execute: async ({ msg }) => {
-    const sent = await msg.reply({ content: '🏓 Pinging...' });
+    const sent = await msg.reply({ content: 'Pinging...' });
     const latency = sent.createdTimestamp - msg.createdTimestamp;
-    await sent.edit({ content: `🏓 Pong! ${latency}ms` });
+    await sent.edit({ content: `Pong! ${latency}ms` });
   },
 });
 
@@ -783,20 +978,9 @@ async function resolveUserName(guild: Guild, userId: string): Promise<string> {
   }
 }
 
-function getPeakHour(grid: number[][]): string {
-  const totals = Array(24).fill(0);
-  for (const day of grid) for (let h = 0; h < 24; h++) totals[h] += day[h] || 0;
-  const peak = totals.indexOf(Math.max(...totals));
-  return formatPeakHour(peak);
-}
-
 function getPeakDay(grid: number[][]): string {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const dayTotals = Array(7).fill(0);
   for (let d = 0; d < grid.length; d++) for (const v of grid[d]) dayTotals[d] += v;
   return dayNames[dayTotals.indexOf(Math.max(...dayTotals))];
-}
-
-function getPeakHourFromDaily(daily: any[]): string {
-  return '—';
 }

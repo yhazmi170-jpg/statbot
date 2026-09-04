@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { mkdirSync } from 'fs';
 import dns from 'dns';
 import { config } from './config.js';
-import { prisma, log, ensureGuild } from './database/index.js';
+import { prisma, log, ensureGuild, startBackup } from './database/index.js';
 import { onMessageCreate, flushMessages } from './collectors/messages.js';
 import { onVoiceStateUpdate, flushVoiceSessions } from './collectors/voice.js';
 import { onGuildMemberAdd, onGuildMemberRemove } from './collectors/members.js';
@@ -74,6 +74,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
@@ -86,7 +87,7 @@ client.once(Events.ClientReady, async (c) => {
   }
 
   // DM owner that bot is online
-  const OWNER_ID = '536278876247162882';
+  const OWNER_ID = config.ownerId;
   try {
     const owner = await c.users.fetch(OWNER_ID);
     await owner.send(`Statbot is online as **${c.user.tag}** in ${c.guilds.cache.size} server(s).`).catch(() => {});
@@ -96,6 +97,12 @@ client.once(Events.ClientReady, async (c) => {
   }
 
   startReportService(client);
+
+  // Start GitHub backup
+  if (config.backup.githubToken && config.backup.githubRepo) {
+    startBackup(config.backup.intervalMs);
+  }
+
   log.info(`Tracking ${c.guilds.cache.size} guilds, ${getCommands().length} commands ready`);
 });
 

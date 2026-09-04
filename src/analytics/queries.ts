@@ -1,9 +1,23 @@
 import { prisma } from '../database/index.js';
-import { subDays } from 'date-fns';
+import { parsePeriod, type PeriodRange } from '../utils/period.js';
+
+// Shared period resolver
+function resolvePeriod(days?: number, period?: string): PeriodRange {
+  if (period) return parsePeriod(period);
+  if (days !== undefined) {
+    const p = parsePeriod('30d');
+    p.days = days;
+    p.since = new Date();
+    p.since.setDate(p.since.getDate() - days);
+    p.since.setHours(0, 0, 0, 0);
+    return p;
+  }
+  return parsePeriod('14d');
+}
 
 // Server overview stats
-export async function getServerStats(guildId: string, days: number = 30) {
-  const since = subDays(new Date(), days);
+export async function getServerStats(guildId: string, days?: number, period?: string) {
+  const { since, days: d } = resolvePeriod(days, period);
 
   const [totalMessages, totalVoiceMs, uniqueUsers, dailyStats, topChannels, topUsers] = await Promise.all([
     prisma.guildDailyStats.aggregate({
@@ -59,8 +73,8 @@ export async function getServerStats(guildId: string, days: number = 30) {
 }
 
 // User stats
-export async function getUserStats(guildId: string, userId: string, days: number = 30) {
-  const since = subDays(new Date(), days);
+export async function getUserStats(guildId: string, userId: string, days?: number, period?: string) {
+  const { since } = resolvePeriod(days, period);
 
   const [dailyStats, voiceSessions, topChannels, dailyBreakdown] = await Promise.all([
     prisma.userDailyStats.aggregate({
@@ -100,8 +114,8 @@ export async function getUserStats(guildId: string, userId: string, days: number
 }
 
 // Top users leaderboard
-export async function getTopUsers(guildId: string, days: number = 30, limit: number = 15) {
-  const since = subDays(new Date(), days);
+export async function getTopUsers(guildId: string, days?: number, period?: string, limit: number = 15) {
+  const { since } = resolvePeriod(days, period);
   const stats = await prisma.userDailyStats.groupBy({
     by: ['userId'],
     where: { guildId, date: { gte: since }, messages: { gt: 0 } },
@@ -118,8 +132,8 @@ export async function getTopUsers(guildId: string, days: number = 30, limit: num
 }
 
 // Top channels leaderboard
-export async function getTopChannels(guildId: string, days: number = 30, limit: number = 15) {
-  const since = subDays(new Date(), days);
+export async function getTopChannels(guildId: string, days?: number, period?: string, limit: number = 15) {
+  const { since } = resolvePeriod(days, period);
   const stats = await prisma.channelStats.groupBy({
     by: ['channelId'],
     where: { guildId, date: { gte: since } },
@@ -138,7 +152,10 @@ export async function getTopChannels(guildId: string, days: number = 30, limit: 
 
 // Activity heatmap (24h x 7days)
 export async function getActivityHeatmap(guildId: string, days: number = 7) {
-  const since = subDays(new Date(), days);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
   const hourly = await prisma.guildHourlyStats.findMany({
     where: { guildId, date: { gte: since } },
     orderBy: [{ date: 'asc' }, { hour: 'asc' }],
@@ -148,7 +165,8 @@ export async function getActivityHeatmap(guildId: string, days: number = 7) {
   const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
   for (const h of hourly) {
     const dayOfWeek = new Date(h.date).getDay();
-    grid[dayOfWeek][h.hour] += h.messages;
+    const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Mon=0, Sun=6
+    grid[adjustedDay][h.hour] += h.messages;
   }
 
   return grid;
@@ -156,7 +174,10 @@ export async function getActivityHeatmap(guildId: string, days: number = 7) {
 
 // Server activity trend (hourly messages)
 export async function getActivityTrend(guildId: string, days: number = 7) {
-  const since = subDays(new Date(), days);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
   const hourly = await prisma.guildHourlyStats.findMany({
     where: { guildId, date: { gte: since } },
     orderBy: [{ date: 'asc' }, { hour: 'asc' }],
@@ -169,8 +190,8 @@ export async function getActivityTrend(guildId: string, days: number = 7) {
 }
 
 // Voice leaderboard
-export async function getTopVoice(guildId: string, days: number = 30, limit: number = 15) {
-  const since = subDays(new Date(), days);
+export async function getTopVoice(guildId: string, days?: number, period?: string, limit: number = 15) {
+  const { since } = resolvePeriod(days, period);
   const stats = await prisma.userDailyStats.groupBy({
     by: ['userId'],
     where: { guildId, date: { gte: since }, voiceMs: { gt: 0 } },
@@ -187,7 +208,10 @@ export async function getTopVoice(guildId: string, days: number = 30, limit: num
 
 // Member growth data
 export async function getMemberGrowth(guildId: string, days: number = 30) {
-  const since = subDays(new Date(), days);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
   const stats = await prisma.guildDailyStats.findMany({
     where: { guildId, date: { gte: since } },
     orderBy: { date: 'asc' },
@@ -198,7 +222,10 @@ export async function getMemberGrowth(guildId: string, days: number = 30) {
 
 // Peak hours
 export async function getPeakHours(guildId: string, days: number = 30) {
-  const since = subDays(new Date(), days);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
   const hourly = await prisma.guildHourlyStats.groupBy({
     by: ['hour'],
     where: { guildId, date: { gte: since } },
@@ -220,6 +247,7 @@ export async function getRecentVoice(guildId: string, limit: number = 10) {
     select: {
       userId: true,
       channelId: true,
+      channelName: true,
       startedAt: true,
       endedAt: true,
       durationMs: true,
@@ -228,8 +256,8 @@ export async function getRecentVoice(guildId: string, limit: number = 10) {
 }
 
 // Server rank (composite score)
-export async function getServerRank(guildId: string, days: number = 30, limit: number = 20) {
-  const since = subDays(new Date(), days);
+export async function getServerRank(guildId: string, days?: number, period?: string, limit: number = 20) {
+  const { since } = resolvePeriod(days, period);
   const stats = await prisma.userDailyStats.groupBy({
     by: ['userId'],
     where: { guildId, date: { gte: since } },
@@ -248,18 +276,18 @@ export async function getServerRank(guildId: string, days: number = 30, limit: n
   })).sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
-// Inactive members (users with no messages in N days)
+// Inactive members
 export async function getInactiveMembers(guildId: string, days: number = 30, limit: number = 20) {
-  const since = subDays(new Date(), days);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
 
-  // Find all users who had activity before the period but not during
   const activeDuring = await prisma.userDailyStats.groupBy({
     by: ['userId'],
     where: { guildId, date: { gte: since }, messages: { gt: 0 } },
   });
   const activeIds = new Set(activeDuring.map(u => u.userId));
 
-  // Get all users with any historical data
   const allUsers = await prisma.userDailyStats.groupBy({
     by: ['userId'],
     where: { guildId, messages: { gt: 0 } },
@@ -282,8 +310,12 @@ export async function getInactiveMembers(guildId: string, days: number = 30, lim
 // Compare two periods
 export async function getCompareData(guildId: string, days: number = 14) {
   const now = new Date();
-  const currentStart = subDays(now, days);
-  const previousStart = subDays(currentStart, days);
+  const currentStart = new Date();
+  currentStart.setDate(currentStart.getDate() - days);
+  currentStart.setHours(0, 0, 0, 0);
+  const previousStart = new Date();
+  previousStart.setDate(previousStart.getDate() - days * 2);
+  previousStart.setHours(0, 0, 0, 0);
 
   const [current, previous] = await Promise.all([
     prisma.guildDailyStats.aggregate({
@@ -327,28 +359,22 @@ export async function getCompareData(guildId: string, days: number = 14) {
 
 // Growth data with daily totals
 export async function getGrowthData(guildId: string, days: number = 30) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
   const stats = await prisma.guildDailyStats.findMany({
-    where: { guildId, date: { gte: subDays(new Date(), days) } },
+    where: { guildId, date: { gte: since } },
     orderBy: { date: 'asc' },
     select: { date: true, joins: true, leaves: true },
   });
 
-  // Calculate running total
   let runningTotal = 0;
-  // Get total members from earliest known point
-  const earliest = await prisma.guildDailyStats.findFirst({
-    where: { guildId },
-    orderBy: { date: 'asc' },
-  });
-
-  // Estimate starting total
   const totalJoinsAll = await prisma.guildDailyStats.aggregate({
     where: { guildId },
     _sum: { joins: true, leaves: true },
   });
   const netAll = (totalJoinsAll._sum.joins || 0) - (totalJoinsAll._sum.leaves || 0);
-
-  // Use guild member count as current and work backwards
   const guild = await prisma.guild.findUnique({ where: { id: guildId } });
   runningTotal = (guild?.memberCount || 100) - netAll;
 
@@ -364,19 +390,87 @@ export async function getGrowthData(guildId: string, days: number = 30) {
   });
 }
 
-// Get daily messages for a period (7 or 30 days)
+// Get daily messages for a period
 export async function getDailyMessages(guildId: string, days: number = 7) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
   const stats = await prisma.guildDailyStats.findMany({
-    where: { guildId, date: { gte: subDays(new Date(), days) } },
+    where: { guildId, date: { gte: since } },
     orderBy: { date: 'asc' },
     select: { totalMessages: true },
   });
   return stats.map(s => s.totalMessages);
 }
 
-// Voice leaderboard
-export async function getVoiceLeaderboard(guildId: string, days: number = 30, limit: number = 10) {
-  const since = subDays(new Date(), days);
+// Hourly activity for a user (24h breakdown)
+export async function getUserHourlyActivity(guildId: string, userId: string, days: number = 14) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
+  const hourly = await prisma.guildHourlyStats.findMany({
+    where: { guildId, date: { gte: since } },
+    orderBy: [{ date: 'asc' }, { hour: 'asc' }],
+  });
+
+  // Aggregate by hour across all days
+  const byHour = Array(24).fill(0);
+  for (const h of hourly) {
+    byHour[h.hour] += h.messages;
+  }
+  return byHour;
+}
+
+// Weekday activity for a user (Mon-Sun breakdown)
+export async function getUserWeekdayActivity(guildId: string, userId: string, days: number = 14) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
+  const daily = await prisma.userDailyStats.findMany({
+    where: { guildId, userId, date: { gte: since } },
+    orderBy: { date: 'asc' },
+  });
+
+  const byWeekday = Array(7).fill(0);
+  for (const d of daily) {
+    const dow = new Date(d.date).getDay();
+    const adjusted = dow === 0 ? 6 : dow - 1; // Mon=0, Sun=6
+    byWeekday[adjusted] += d.messages;
+  }
+  return byWeekday;
+}
+
+// Voice channel leaderboard (top channels by voice time)
+export async function getTopVoiceChannels(guildId: string, days: number = 30, limit: number = 10) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
+  const stats = await prisma.voiceSession.groupBy({
+    by: ['channelId'],
+    where: { guildId, startedAt: { gte: since } },
+    _sum: { durationMs: true },
+    _count: { id: true },
+    orderBy: { _sum: { durationMs: 'desc' } },
+    take: limit,
+  });
+
+  return stats.map(s => ({
+    channelId: s.channelId,
+    totalMs: Number(s._sum.durationMs || 0),
+    sessions: s._count.id,
+  }));
+}
+
+// Top voice users with channel names
+export async function getTopVoiceWithChannels(guildId: string, days: number = 30, limit: number = 10) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
   const stats = await prisma.userDailyStats.groupBy({
     by: ['userId'],
     where: { guildId, date: { gte: since }, voiceMs: { gt: 0 } },
@@ -384,39 +478,27 @@ export async function getVoiceLeaderboard(guildId: string, days: number = 30, li
     orderBy: { _sum: { voiceMs: 'desc' } },
     take: limit,
   });
+
   return stats.map(s => ({
     userId: s.userId,
     voiceMs: Number(s._sum.voiceMs || 0),
   }));
 }
 
-// Channel message counts for a period
-export async function getChannelMessages(guildId: string, days: number = 30) {
-  const since = subDays(new Date(), days);
-  const stats = await prisma.channelStats.groupBy({
-    by: ['channelId'],
-    where: { guildId, date: { gte: since } },
-    _sum: { messages: true },
-    orderBy: { _sum: { messages: 'desc' } },
-    take: 10,
-  });
-  return stats.map(s => ({
-    channelId: s.channelId,
-    messages: s._sum.messages || 0,
-  }));
-}
+// Daily user messages (for user stats chart)
+export async function getUserDailyMessages(guildId: string, userId: string, days: number = 14) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
 
-// Peak hours aggregation
-export async function getPeakHoursAgg(guildId: string, days: number = 30) {
-  const since = subDays(new Date(), days);
-  const hourly = await prisma.guildHourlyStats.groupBy({
-    by: ['hour'],
-    where: { guildId, date: { gte: since } },
-    _sum: { messages: true },
-    orderBy: { _sum: { messages: 'desc' } },
+  const daily = await prisma.userDailyStats.findMany({
+    where: { guildId, userId, date: { gte: since } },
+    orderBy: { date: 'asc' },
+    select: { date: true, messages: true },
   });
-  return hourly.map(h => ({
-    hour: h.hour,
-    messages: h._sum.messages || 0,
+
+  return daily.map(d => ({
+    date: d.date.toISOString().split('T')[0],
+    messages: d.messages,
   }));
 }

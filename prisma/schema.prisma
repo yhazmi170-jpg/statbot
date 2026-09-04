@@ -31,7 +31,7 @@ model Guild {
   userDailyStats   UserDailyStats[]
   voiceSessions    VoiceSession[]
 
-  @@index([id])
+  @@index([ownerId])
 }
 
 model User {
@@ -42,7 +42,7 @@ model User {
   dailyStats    UserDailyStats[]
   voiceSessions VoiceSession[]
 
-  @@index([id])
+  @@index([username])
 }
 
 model Channel {
@@ -53,7 +53,7 @@ model Channel {
   createdAt DateTime @default(now())
 
   @@index([guildId])
-  @@index([id])
+  @@index([name])
 }
 
 model GuildDailyStats {
@@ -70,6 +70,7 @@ model GuildDailyStats {
 
   @@unique([guildId, date])
   @@index([guildId, date])
+  @@index([date])
 }
 
 model GuildHourlyStats {
@@ -83,6 +84,7 @@ model GuildHourlyStats {
 
   @@unique([guildId, date, hour])
   @@index([guildId, date])
+  @@index([date])
 }
 
 model UserDailyStats {
@@ -100,6 +102,7 @@ model UserDailyStats {
   @@unique([guildId, userId, date])
   @@index([guildId, userId, date])
   @@index([guildId, date])
+  @@index([userId, date])
 }
 
 model ChannelStats {
@@ -115,6 +118,7 @@ model ChannelStats {
   @@unique([guildId, channelId, date])
   @@index([guildId, channelId, date])
   @@index([guildId, date])
+  @@index([channelId, date])
 }
 
 model VoiceSession {
@@ -122,6 +126,7 @@ model VoiceSession {
   guildId    String
   userId     String
   channelId  String
+  channelName String?
   startedAt  DateTime  @default(now())
   endedAt    DateTime?
   durationMs BigInt    @default(0)
@@ -131,6 +136,7 @@ model VoiceSession {
   @@index([guildId, userId, startedAt])
   @@index([guildId, channelId, startedAt])
   @@index([startedAt])
+  @@index([guildId, startedAt])
 }
 
 model ReportConfig {
