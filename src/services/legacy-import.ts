@@ -1,6 +1,6 @@
 import { Guild, Client } from 'discord.js';
 import { prisma, log } from '../database/index.js';
-import { LEGACY_USERS, LEGACY_CHANNELS } from '../data/legacy-statbot.js';
+import { LEGACY_USERS, LEGACY_CHANNELS } from '../legacy-statbot.js';
 
 export const IMPORT_KEY = 'legacy-statbot-marlboro-v1';
 
