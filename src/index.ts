@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { createServer } from 'http';
 import { config } from './config.js';
 import { prisma, log, ensureGuild } from './database/index.js';
 import { onMessageCreate, flushMessages } from './collectors/messages.js';
@@ -6,6 +7,18 @@ import { onVoiceStateUpdate, flushVoiceSessions } from './collectors/voice.js';
 import { onGuildMemberAdd, onGuildMemberRemove } from './collectors/members.js';
 import { handleCommand, getCommands } from './commands/index.js';
 import { startReportService } from './services/reports.js';
+
+const port = parseInt(process.env.PORT || '3000');
+
+createServer((req, res) => {
+  if (req.url === '/' || req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Statbot is running');
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+}).listen(port, () => log.info(`HTTP server on port ${port}`));
 
 const client = new Client({
   intents: [
