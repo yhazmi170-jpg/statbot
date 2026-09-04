@@ -16,9 +16,6 @@ const port = parseInt(process.env.PORT || '3000');
 // In-memory log buffer for remote debugging
 const logBuffer: string[] = [];
 const MAX_LOGS = 200;
-const origLog = log.info.bind(log);
-const origError = log.error.bind(log);
-const origWarn = log.warn.bind(log);
 
 function pushLog(level: string, msg: string) {
   const entry = `[${new Date().toISOString()}] ${level}: ${msg}`;
@@ -26,9 +23,27 @@ function pushLog(level: string, msg: string) {
   if (logBuffer.length > MAX_LOGS) logBuffer.shift();
 }
 
-log.info = function(msg: any) { pushLog('INFO', typeof msg === 'string' ? msg : JSON.stringify(msg)); origLog.apply(log, arguments as any); } as any;
-log.error = function(msg: any) { pushLog('ERR', typeof msg === 'string' ? msg : JSON.stringify(msg)); origError.apply(log, arguments as any); } as any;
-log.warn = function(msg: any) { pushLog('WARN', typeof msg === 'string' ? msg : JSON.stringify(msg)); origWarn.apply(log, arguments as any); } as any;
+const origInfo = log.info.bind(log);
+const origError = log.error.bind(log);
+const origWarn = log.warn.bind(log);
+
+log.info = function(...args: any[]) {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  pushLog('INFO', msg);
+  return origInfo.apply(log, args as any);
+} as any;
+
+log.error = function(...args: any[]) {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  pushLog('ERR', msg);
+  return origError.apply(log, args as any);
+} as any;
+
+log.warn = function(...args: any[]) {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  pushLog('WARN', msg);
+  return origWarn.apply(log, args as any);
+} as any;
 
 createServer((req, res) => {
   if (req.url === '/' || req.url === '/health') {
@@ -146,6 +161,13 @@ client.once(Events.ClientReady, () => {
 });
 
 log.info({ tokenLen: config.token.length, tokenPrefix: config.token.substring(0, 10) }, 'Attempting Discord login...');
+
+// Test database connection first (non-blocking)
+prisma.$queryRaw`SELECT 1`.then(() => {
+  log.info('Database connection OK');
+}).catch((err: any) => {
+  log.error({ err: err.message }, 'Database connection failed');
+});
 
 client.login(config.token).then(() => {
   log.info('client.login() resolved');
