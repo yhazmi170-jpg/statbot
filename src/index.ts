@@ -1,5 +1,6 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { createServer } from 'http';
+import { mkdirSync } from 'fs';
 import dns from 'dns';
 import { config } from './config.js';
 import { prisma, log, ensureGuild } from './database/index.js';
@@ -10,6 +11,9 @@ import { handleCommand, getCommands } from './commands/index.js';
 import { startReportService } from './services/reports.js';
 
 dns.setDefaultResultOrder('ipv4first');
+
+// Ensure data directory exists for SQLite
+try { mkdirSync('./data', { recursive: true }); } catch {}
 
 const port = parseInt(process.env.PORT || '3000');
 
@@ -161,13 +165,6 @@ client.once(Events.ClientReady, () => {
 });
 
 log.info({ tokenLen: config.token.length, tokenPrefix: config.token.substring(0, 10) }, 'Attempting Discord login...');
-
-// Test database connection first (non-blocking)
-prisma.$queryRaw`SELECT 1`.then(() => {
-  log.info('Database connection OK');
-}).catch((err: any) => {
-  log.error({ err: err.message }, 'Database connection failed');
-});
 
 client.login(config.token).then(() => {
   log.info('client.login() resolved');
