@@ -241,22 +241,25 @@ export function areaLineChart(ctx: any, x: number, y: number, w: number, h: numb
   const topPad = 20;
   const chartH = h - topPad - 20;
 
-  // Clip to panel bounds to prevent overflow into adjacent panels
-  ctx.save();
-  ctx.beginPath();
-  rr(ctx, x - 40, y - 5, w + 60, h + 10, 8);
-  ctx.clip();
-
-  // Y-axis grid + labels (drawn outside clip for labels)
+  // Y-axis labels drawn OUTSIDE clip (need to be visible left of chart)
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((max * i) / ySteps);
     const yy = y + topPad + chartH - (i / ySteps) * chartH;
     text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+  }
+
+  // Clip to exact chart bounds — prevents bleed into adjacent panels
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  // Grid lines INSIDE clip
+  for (let i = 0; i <= ySteps; i++) {
+    const yy = y + topPad + chartH - (i / ySteps) * chartH;
     if (i > 0) {
-      ctx.setLineDash?.([4, 4]);
       fillRect(ctx, x, yy, w, 1, T.chartGrid);
-      ctx.setLineDash?.([]);
     }
   }
 
@@ -294,9 +297,9 @@ export function areaLineChart(ctx: any, x: number, y: number, w: number, h: numb
   ctx.lineCap = 'round';
   ctx.stroke();
 
-  ctx.restore(); // Release clip
+  ctx.restore();
 
-  // X-axis labels (outside clip)
+  // X-axis labels drawn OUTSIDE clip
   if (opts?.labels && opts.labels.length > 0) {
     const step = Math.max(1, Math.floor(n / 14));
     for (let i = 0; i < n; i += step) {

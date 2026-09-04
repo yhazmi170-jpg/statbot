@@ -169,3 +169,54 @@ model ExcludedRole {
 
   @@unique([guildId, roleId])
 }
+
+model LegacyUserStats {
+  id                String   @id @default(cuid())
+  guildId           String
+  discordUserId     String?
+  importedUsername   String
+  messageCount14d   Int      @default(0)
+  voiceSeconds14d   Int      @default(0)
+  messageRank       Int?
+  voiceRank         Int?
+  linked            Boolean  @default(false)
+  importKey         String
+  source            String   @default("legacy-statbot")
+  importedAt        DateTime @default(now())
+
+  @@unique([guildId, importedUsername, importKey])
+  @@index([guildId, discordUserId])
+  @@index([guildId, linked])
+  @@index([importKey])
+}
+
+model LegacyChannelStats {
+  id              String   @id @default(cuid())
+  guildId         String
+  channelId       String?
+  channelName     String
+  channelType     String   @default("text")
+  messageCount14d Int      @default(0)
+  voiceSeconds14d Int      @default(0)
+  channelRank     Int?
+  voiceChannelRank Int?
+  linked          Boolean  @default(false)
+  importKey       String
+  source          String   @default("legacy-statbot")
+  importedAt      DateTime @default(now())
+
+  @@unique([guildId, channelName, importKey])
+  @@index([guildId, linked])
+  @@index([importKey])
+}
+
+model ImportLog {
+  id        String   @id @default(cuid())
+  importKey String
+  guildId   String
+  status    String
+  message   String?
+  timestamp DateTime @default(now())
+
+  @@unique([importKey, guildId])
+}

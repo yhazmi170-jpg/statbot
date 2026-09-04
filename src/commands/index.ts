@@ -13,6 +13,7 @@ import { renderInactive } from '../rendering/inactive.js';
 import { renderServerRank } from '../rendering/server-rank.js';
 import { renderWeeklyReport, renderMonthlyReport } from '../rendering/reports.js';
 import { parsePeriod } from '../utils/period.js';
+import { linkLegacyUser, getUnlinkedUsers, getUnlinkedChannels, getLegacyStatsForUser, IMPORT_KEY } from '../services/legacy-import.js';
 import * as queries from '../analytics/queries.js';
 
 export interface CommandContext {
@@ -183,13 +184,22 @@ registerCommand({
     const { period } = parsePeriodArg(periodArgs);
     const days = period ? parsePeriod(period).days : 14;
 
-    const [stats, allUsers] = await Promise.all([
+    const [stats, allUsers, legacyStats] = await Promise.all([
       queries.getUserStats(msg.guild!.id, targetUser.id, days, period),
       queries.getTopUsers(msg.guild!.id, days, period, 9999),
+      getLegacyStatsForUser(msg.guild!.id, targetUser.id),
     ]);
 
-    const noData = stats.totalMessages === 0 && stats.totalVoiceMs === 0;
-    const rank = noData ? allUsers.length + 1 : (allUsers.findIndex(u => u.userId === targetUser.id) + 1 || allUsers.length);
+    // Combine legacy + live data
+    const legacyMsgs = legacyStats?.messageCount14d || 0;
+    const legacyVoiceSec = legacyStats?.voiceSeconds14d || 0;
+    const legacyMsgRank = legacyStats?.messageRank || null;
+    const legacyVoiceRank = legacyStats?.voiceRank || null;
+    const combinedMessages = stats.totalMessages + legacyMsgs;
+    const combinedVoiceMs = stats.totalVoiceMs + (legacyVoiceSec * 1000);
+
+    const noData = combinedMessages === 0 && combinedVoiceMs === 0;
+    const rank = noData ? allUsers.length + 1 : (allUsers.findIndex((u: any) => u.userId === targetUser.id) + 1 || allUsers.length);
     const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
 
     const weekdayMsgs = Array(7).fill(0);
@@ -207,7 +217,7 @@ registerCommand({
     }
 
     const resolvedChannels = stats.topChannels
-      .map(c => {
+      .map((c: any) => {
         const ch = msg.guild!.channels.cache.get(c.channelId);
         if (!ch) return null;
         if (ch.isTextBased()) {
@@ -231,13 +241,16 @@ registerCommand({
       user: { username: targetUser.username, avatarUrl },
       guildName: msg.guild!.name,
       rank, totalMembers: msg.guild!.memberCount,
-      totalMessages: stats.totalMessages, totalVoiceMs: stats.totalVoiceMs,
-      voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter(d => d.messages > 0).length,
+      totalMessages: combinedMessages, totalVoiceMs: combinedVoiceMs,
+      voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
       totalDays: days, topChannels: resolvedChannels,
-      dailyMessages: stats.dailyBreakdown.map(d => d.messages),
+      dailyMessages: stats.dailyBreakdown.map((d: any) => d.messages),
       weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile, topChannelName: resolvedChannels[0]?.name || '—',
       msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
       voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
+      legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
+      legacyMsgRank, legacyVoiceRank,
+      liveMessages: stats.totalMessages, liveVoiceMs: stats.totalVoiceMs,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'userstats.png' })] });
   },
@@ -951,6 +964,123 @@ registerCommand({
     const sent = await msg.reply({ content: 'Pinging...' });
     const latency = sent.createdTimestamp - msg.createdTimestamp;
     await sent.edit({ content: `Pong! ${latency}ms` });
+  },
+});
+
+// === LINKLEGACY ===
+registerCommand({
+  name: 'linklegacy',
+  description: 'Link a legacy imported username to a Discord user (admin only)',
+  category: 'Admin',
+  adminOnly: true,
+  aliases: ['linkseed'],
+  execute: async ({ msg, args }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ Administrator only.' });
+      return;
+    }
+
+    if (args.length < 2) {
+      await msg.reply({ content: '❌ Usage: `m?linklegacy <username> @user`' });
+      return;
+    }
+
+    const legacyUsername = args[0];
+    const mentioned = msg.mentions.users.first();
+    if (!mentioned) {
+      await msg.reply({ content: '❌ Mention a user to link: `m?linklegacy berry05__ @user`' });
+      return;
+    }
+
+    const result = await linkLegacyUser(msg.guild!.id, legacyUsername, mentioned.id);
+    await msg.reply({ content: result.success ? `✅ ${result.message}` : `❌ ${result.message}` });
+  },
+});
+
+// === LEGACYUNLINKED ===
+registerCommand({
+  name: 'legacyunlinked',
+  description: 'Show unlinked legacy records (admin only)',
+  category: 'Admin',
+  adminOnly: true,
+  execute: async ({ msg }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ Administrator only.' });
+      return;
+    }
+
+    const unlinked = await getUnlinkedUsers(msg.guild!.id);
+    if (unlinked.length === 0) {
+      await msg.reply({ content: '✅ All legacy records are linked.' });
+      return;
+    }
+
+    const lines = unlinked.map((u: any, i: number) =>
+      `${i + 1}. **${u.importedUsername}** — ${u.messageCount14d.toLocaleString()} msgs, ${Math.round(u.voiceSeconds14d / 3600 * 10) / 10}h voice`
+    );
+
+    const chunks: string[] = [];
+    let current = '';
+    for (const line of lines) {
+      if (current.length + line.length > 1900) {
+        chunks.push(current);
+        current = line;
+      } else {
+        current += (current ? '\n' : '') + line;
+      }
+    }
+    if (current) chunks.push(current);
+
+    for (let i = 0; i < chunks.length; i++) {
+      await msg.reply({
+        embeds: [{
+          title: i === 0 ? `Unlinked Legacy Records (${unlinked.length})` : undefined,
+          description: chunks[i],
+          color: 0x8b0000,
+          footer: { text: 'Use m?linklegacy <name> @user to link' },
+        }],
+      });
+    }
+  },
+});
+
+// === LEGACYSTATUS ===
+registerCommand({
+  name: 'legacystatus',
+  description: 'Show legacy import status (admin only)',
+  category: 'Admin',
+  adminOnly: true,
+  execute: async ({ msg }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ Administrator only.' });
+      return;
+    }
+
+    const [total, linked, unlinked] = await Promise.all([
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY } }),
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY, linked: true } }),
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY, linked: false } }),
+    ]);
+
+    const importLog = await prisma.importLog.findUnique({
+      where: { importKey_guildId: { importKey: IMPORT_KEY, guildId: msg.guild!.id } },
+    });
+
+    await msg.reply({
+      embeds: [{
+        title: 'Legacy Import Status',
+        description: [
+          `**Import Key:** \`${IMPORT_KEY}\``,
+          `**Status:** ${importLog?.status || 'not imported'}`,
+          `**Total Records:** ${total}`,
+          `**Linked:** ${linked}`,
+          `**Unlinked:** ${unlinked}`,
+          importLog?.message ? `\n**Details:** ${importLog.message}` : '',
+        ].filter(Boolean).join('\n'),
+        color: 0x8b0000,
+        footer: { text: 'StatBot' },
+      }],
+    });
   },
 });
 

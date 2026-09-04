@@ -9,6 +9,7 @@ import { onVoiceStateUpdate, flushVoiceSessions } from './collectors/voice.js';
 import { onGuildMemberAdd, onGuildMemberRemove } from './collectors/members.js';
 import { handleCommand, getCommands } from './commands/index.js';
 import { startReportService } from './services/reports.js';
+import { importLegacyData } from './services/legacy-import.js';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -97,6 +98,11 @@ client.once(Events.ClientReady, async (c) => {
   }
 
   startReportService(client);
+
+  // Run legacy import for each guild
+  for (const [, guild] of c.guilds.cache) {
+    importLegacyData(guild).catch(err => log.error({ err: err.message }, 'Legacy import failed'));
+  }
 
   // Start GitHub backup
   if (config.backup.githubToken && config.backup.githubRepo) {

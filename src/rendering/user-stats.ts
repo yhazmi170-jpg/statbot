@@ -28,6 +28,13 @@ interface Data {
   msgsThisMonth?: number;
   voiceThisWeek?: number;
   voiceThisMonth?: number;
+  // Legacy data
+  legacyMessages?: number;
+  legacyVoiceMs?: number;
+  legacyMsgRank?: number | null;
+  legacyVoiceRank?: number | null;
+  liveMessages?: number;
+  liveVoiceMs?: number;
 }
 
 export async function renderUserStats(d: Data): Promise<Buffer> {
@@ -84,9 +91,17 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
 
   const topChannelLabel = topChannels.length > 0 ? topChannels[0].name : '—';
 
+  const hasLegacy = (d.legacyMessages || 0) > 0 || (d.legacyVoiceMs || 0) > 0;
+  const msgValue = hasLegacy
+    ? `${numStr(d.totalMessages)} (${numStr(d.liveMessages || 0)} live + ${numStr(d.legacyMessages || 0)} legacy)`
+    : numStr(d.totalMessages);
+  const voiceValue = hasLegacy
+    ? `${(d.totalVoiceMs / 3600000).toFixed(1)}h (${((d.liveVoiceMs || 0) / 3600000).toFixed(1)} live + ${((d.legacyVoiceMs || 0) / 3600000).toFixed(1)} legacy)`
+    : (d.totalVoiceMs / 3600000).toFixed(1) + 'h';
+
   const stats = [
-    { label: 'Messages', value: numStr(d.totalMessages), color: T.accentBright },
-    { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
+    { label: 'Messages', value: msgValue, color: T.accentBright },
+    { label: 'Voice Hours', value: voiceValue },
     { label: 'Active Days', value: `${d.activeDays}/${d.totalDays}` },
     { label: 'Top Channel', value: topChannelLabel },
     { label: 'Percentile', value: `Top ${d.percentile}%` },
