@@ -2,7 +2,19 @@ import { PrismaClient } from '@prisma/client';
 import pino from 'pino';
 
 export const log = pino({ name: 'statbot', level: 'info' });
-export const prisma = new PrismaClient({ log: ['error'] });
+
+let _prisma: PrismaClient | null = null;
+export function getPrisma() {
+  if (!_prisma) _prisma = new PrismaClient({ log: ['error'] });
+  return _prisma;
+}
+
+// Lazy proxy so existing code still works
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_, prop) {
+    return (getPrisma() as any)[prop];
+  },
+});
 
 export async function ensureGuild(id: string, name: string, iconUrl?: string) {
   return prisma.guild.upsert({
