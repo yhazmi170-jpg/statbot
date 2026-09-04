@@ -153,13 +153,10 @@ registerCommand({
     }
 
     const stats = await queries.getUserStats(msg.guild!.id, targetUser.id);
-    if (stats.totalMessages === 0 && stats.totalVoiceMs === 0) {
-      await msg.reply({ content: '❌ Not enough activity data has been collected yet.' });
-      return;
-    }
+    const noData = stats.totalMessages === 0 && stats.totalVoiceMs === 0;
 
     const allUsers = await queries.getTopUsers(msg.guild!.id, 30, 9999);
-    const rank = allUsers.findIndex(u => u.userId === targetUser.id) + 1 || allUsers.length;
+    const rank = noData ? allUsers.length + 1 : (allUsers.findIndex(u => u.userId === targetUser.id) + 1 || allUsers.length);
     const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
 
     const weekdayMsgs = Array(7).fill(0);
