@@ -254,36 +254,47 @@ export function areaLineChart(ctx: any, x: number, y: number, w: number, h: numb
   const topPad = 20;
   const chartH = h - topPad - 20;
 
+  // Chart inner bounds (where grid/lines are drawn)
+  const chartX = x;
+  const chartY = y + topPad;
+  const chartW = w;
+  const drawH = chartH;
+
   // Y-axis labels drawn OUTSIDE clip (need to be visible left of chart)
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((max * i) / ySteps);
-    const yy = y + topPad + chartH - (i / ySteps) * chartH;
-    text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+    const yy = chartY + drawH - (i / ySteps) * drawH;
+    text(ctx, String(val), chartX - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
   }
 
   // Clip to exact chart bounds — prevents bleed into adjacent panels
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x, y, w, h);
+  ctx.rect(chartX, chartY, chartW, drawH);
   ctx.clip();
 
   // Grid lines INSIDE clip
   for (let i = 0; i <= ySteps; i++) {
-    const yy = y + topPad + chartH - (i / ySteps) * chartH;
+    const yy = chartY + drawH - (i / ySteps) * drawH;
     if (i > 0) {
-      fillRect(ctx, x, yy, w, 1, T.chartGrid);
+      ctx.beginPath();
+      ctx.moveTo(chartX, yy);
+      ctx.lineTo(chartX + chartW, yy);
+      ctx.strokeStyle = T.chartGrid;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
   }
 
   // Build points
   const points = data.map((val, idx) => ({
-    px: x + (idx / (n - 1)) * w,
-    py: y + topPad + chartH - (val / max) * chartH,
+    px: chartX + (idx / (n - 1)) * chartW,
+    py: chartY + drawH - (val / max) * drawH,
   }));
 
   // Gradient fill below line
-  const gradient = ctx.createLinearGradient(0, y + topPad, 0, y + topPad + chartH);
+  const gradient = ctx.createLinearGradient(0, chartY, 0, chartY + drawH);
   gradient.addColorStop(0, 'rgba(220, 38, 38, 0.25)');
   gradient.addColorStop(1, 'rgba(220, 38, 38, 0.0)');
 
@@ -292,8 +303,8 @@ export function areaLineChart(ctx: any, x: number, y: number, w: number, h: numb
   for (let i = 1; i < points.length; i++) {
     ctx.lineTo(points[i].px, points[i].py);
   }
-  ctx.lineTo(points[points.length - 1].px, y + topPad + chartH);
-  ctx.lineTo(points[0].px, y + topPad + chartH);
+  ctx.lineTo(points[points.length - 1].px, chartY + drawH);
+  ctx.lineTo(points[0].px, chartY + drawH);
   ctx.closePath();
   ctx.fillStyle = gradient;
   ctx.fill();
@@ -316,8 +327,8 @@ export function areaLineChart(ctx: any, x: number, y: number, w: number, h: numb
   if (opts?.labels && opts.labels.length > 0) {
     const step = Math.max(1, Math.floor(n / 14));
     for (let i = 0; i < n; i += step) {
-      const px = x + (i / (n - 1)) * w;
-      text(ctx, opts.labels[i] || '', px, y + topPad + chartH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
+      const px = chartX + (i / (n - 1)) * chartW;
+      text(ctx, opts.labels[i] || '', px, chartY + drawH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
     }
   }
 }
@@ -336,39 +347,50 @@ export function barChart(ctx: any, x: number, y: number, w: number, h: number, d
   const topPad = 20;
   const chartH = h - topPad - 20;
 
+  // Chart inner bounds
+  const chartX = x;
+  const chartY = y + topPad;
+  const chartW = w;
+  const drawH = chartH;
+
   // Y-axis labels OUTSIDE clip
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((max * i) / ySteps);
-    const yy = y + topPad + chartH - (i / ySteps) * chartH;
-    text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+    const yy = chartY + drawH - (i / ySteps) * drawH;
+    text(ctx, String(val), chartX - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
   }
 
   // Clip to chart area
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x, y, w, h);
+  ctx.rect(chartX, chartY, chartW, drawH);
   ctx.clip();
 
   // Grid lines INSIDE clip
   for (let i = 0; i <= ySteps; i++) {
-    const yy = y + topPad + chartH - (i / ySteps) * chartH;
+    const yy = chartY + drawH - (i / ySteps) * drawH;
     if (i > 0) {
-      fillRect(ctx, x, yy, w, 1, T.chartGrid);
+      ctx.beginPath();
+      ctx.moveTo(chartX, yy);
+      ctx.lineTo(chartX + chartW, yy);
+      ctx.strokeStyle = T.chartGrid;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
   }
 
   const localMax = opts?.maxVal || Math.max(...data, 1);
   for (let i = 0; i < barCount; i++) {
-    const bx = x + gap + i * (barW + gap);
-    const bh = localMax > 0 ? (data[i] / localMax) * chartH : 0;
-    const by = y + topPad + chartH - bh;
+    const bx = chartX + gap + i * (barW + gap);
+    const bh = localMax > 0 ? (data[i] / localMax) * drawH : 0;
+    const by = chartY + drawH - bh;
 
     const isPeak = data[i] === localMax && localMax > 0;
     fillRect(ctx, bx, by, barW, bh, isPeak ? color : '#7f1d1d', 3);
 
     if (opts?.labels && opts.labels[i] && i % Math.max(1, Math.floor(barCount / 14)) === 0) {
-      text(ctx, opts.labels[i], bx + barW / 2, y + topPad + chartH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
+      text(ctx, opts.labels[i], bx + barW / 2, chartY + drawH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
     }
 
     if (opts?.showValues && data[i] > 0 && i % Math.max(1, Math.floor(barCount / 10)) === 0) {
@@ -391,50 +413,62 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
   const topPad = 20;
   const chartH = h - topPad - 20;
 
+  // Chart inner bounds
+  const chartX = x;
+  const chartY = y + topPad;
+  const chartW = w;
+  const drawH = chartH;
+
   // Y-axis labels OUTSIDE clip
   const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const val = Math.round((max * i) / ySteps);
-    const yy = y + topPad + chartH - (i / ySteps) * chartH;
-    text(ctx, String(val), x - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
+    const yy = chartY + drawH - (i / ySteps) * drawH;
+    text(ctx, String(val), chartX - 8, yy - 7, { size: 12, weight: 500, color: T.chartText, align: 'right' });
   }
 
   // Clip to chart area
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x, y, w, h);
+  ctx.rect(chartX, chartY, chartW, drawH);
   ctx.clip();
 
   // Grid lines INSIDE clip
   for (let i = 0; i <= ySteps; i++) {
-    const yy = y + topPad + chartH - (i / ySteps) * chartH;
+    const yy = chartY + drawH - (i / ySteps) * drawH;
     if (i > 0) {
-      fillRect(ctx, x, yy, w, 1, T.chartGrid);
+      ctx.beginPath();
+      ctx.moveTo(chartX, yy);
+      ctx.lineTo(chartX + chartW, yy);
+      ctx.strokeStyle = T.chartGrid;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
   }
 
   ctx.beginPath();
-  ctx.moveTo(x, y + topPad + chartH);
+  ctx.moveTo(chartX, chartY + drawH);
   for (let i = 0; i < n; i++) {
-    const px = x + (i / (n - 1)) * w;
-    const py = y + topPad + chartH - (data[i] / max) * chartH;
+    const px = chartX + (i / (n - 1)) * chartW;
+    const py = chartY + drawH - (data[i] / max) * drawH;
     ctx.lineTo(px, py);
   }
-  ctx.lineTo(x + w, y + topPad + chartH);
+  ctx.lineTo(chartX + chartW, chartY + drawH);
   ctx.closePath();
   ctx.fillStyle = T.chartFill;
   ctx.fill();
 
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
-    const px = x + (i / (n - 1)) * w;
-    const py = y + topPad + chartH - (data[i] / max) * chartH;
+    const px = chartX + (i / (n - 1)) * chartW;
+    const py = chartY + drawH - (data[i] / max) * drawH;
     if (i === 0) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   }
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
   ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
   ctx.stroke();
 
   ctx.restore();
@@ -443,10 +477,10 @@ export function lineChart(ctx: any, x: number, y: number, w: number, h: number, 
   if (opts?.labels && opts.labels.length > 0) {
     const step = Math.max(1, Math.floor(n / 12));
     for (let i = 0; i < n; i += step) {
-      const px = x + (i / (n - 1)) * w;
-      text(ctx, opts.labels[i] || '', px, y + topPad + chartH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
-    }
-  }
+      const px = chartX + (i / (n - 1)) * chartW;
+      text(ctx, opts.labels[i] || '', px, chartY + drawH + 6, { size: 11, weight: 500, color: T.textDim, align: 'center' });
+}
+}
 }
 
 // ─── HEATMAP ───────────────────────────────────────────

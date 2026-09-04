@@ -76,9 +76,12 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
 
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
-  panelClip(ctx, tl);
+  // Clip to panel content area (below header)
+  const tlContentY = panelContentY(tl);
+  const tlContentH = tl.h - 40;
+  panelClip(ctx, { x: tl.x, y: tlContentY, w: tl.w, h: tlContentH });
   panelHeader(ctx, tl, 'Message Activity', period);
-  areaLineChart(ctx, tl.x + 50, panelContentY(tl), tl.w - 70, tl.h - 55,
+  areaLineChart(ctx, tl.x + 50, tlContentY, tl.w - 70, tlContentH - 15,
     hourlyActivity.map(h => h.messages), {
       labels: hourlyActivity.map(h => `${String(h.hour).padStart(2, '0')}`),
     });
