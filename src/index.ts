@@ -1,5 +1,6 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { createServer } from 'http';
+import dns from 'dns';
 import { config } from './config.js';
 import { prisma, log, ensureGuild } from './database/index.js';
 import { onMessageCreate, flushMessages } from './collectors/messages.js';
@@ -7,6 +8,8 @@ import { onVoiceStateUpdate, flushVoiceSessions } from './collectors/voice.js';
 import { onGuildMemberAdd, onGuildMemberRemove } from './collectors/members.js';
 import { handleCommand, getCommands } from './commands/index.js';
 import { startReportService } from './services/reports.js';
+
+dns.setDefaultResultOrder('ipv4first');
 
 const port = parseInt(process.env.PORT || '3000');
 
@@ -133,13 +136,20 @@ if (!config.token) {
 
 // Login with timeout
 const loginTimeout = setTimeout(() => {
-  log.error('Discord login timed out after 120s');
+  log.error('Discord login timed out after 60s');
   process.exit(1);
-}, 120_000);
+}, 60_000);
 
-client.once(Events.ClientReady, () => clearTimeout(loginTimeout));
+client.once(Events.ClientReady, () => {
+  clearTimeout(loginTimeout);
+  log.info('ClientReady fired, clearing login timeout');
+});
 
-client.login(config.token).catch((err: any) => {
+log.info({ tokenLen: config.token.length }, 'Attempting Discord login...');
+
+client.login(config.token).then(() => {
+  log.info('client.login() resolved');
+}).catch((err: any) => {
   log.error({ err: err.message }, 'Discord login failed');
   clearTimeout(loginTimeout);
   process.exit(1);
