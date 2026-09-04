@@ -158,6 +158,101 @@ registerCommand({
   },
 });
 
+// === ME ===
+registerCommand({
+  name: 'me',
+  description: 'Your own user statistics',
+  category: 'Analytics',
+  execute: async ({ msg, args }) => {
+    const targetUser = msg.author;
+    const periodArgs: string[] = [];
+
+    for (const arg of args) {
+      if (arg.startsWith('<@') || /^\d{17,20}$/.test(arg)) {
+        await msg.reply({ content: '❌ Use `m?u @user` to view another member\'s statistics.' });
+        return;
+      } else {
+        periodArgs.push(arg);
+      }
+    }
+
+    const { period } = parsePeriodArg(periodArgs);
+    const days = period ? parsePeriod(period).days : 14;
+
+    const [stats, allUsers, legacyStats] = await Promise.all([
+      queries.getUserStats(msg.guild!.id, targetUser.id, days, period),
+      queries.getTopUsers(msg.guild!.id, days, period, 9999),
+      getLegacyStatsForUser(msg.guild!.id, targetUser.id),
+    ]);
+
+    const legacyMsgs = legacyStats?.messageCount14d || 0;
+    const legacyVoiceSec = legacyStats?.voiceSeconds14d || 0;
+    const legacyMsgRank = legacyStats?.messageRank || null;
+    const legacyVoiceRank = legacyStats?.voiceRank || null;
+    const combinedMessages = stats.totalMessages + legacyMsgs;
+    const combinedVoiceMs = stats.totalVoiceMs + (legacyVoiceSec * 1000);
+
+    const noData = combinedMessages === 0 && combinedVoiceMs === 0;
+    const rank = noData ? allUsers.length + 1 : (allUsers.findIndex((u: any) => u.userId === targetUser.id) + 1 || allUsers.length);
+    const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
+
+    const weekdayMsgs = Array(7).fill(0);
+    for (const d of stats.dailyBreakdown) {
+      const dow = new Date(d.date).getDay();
+      const idx = dow === 0 ? 6 : dow - 1;
+      weekdayMsgs[idx] += d.messages;
+    }
+
+    const hourlyMsgs = Array(24).fill(0);
+    for (const d of stats.dailyBreakdown) {
+      if (d.topHour != null && d.messages > 0) {
+        hourlyMsgs[d.topHour] += d.messages;
+      }
+    }
+
+    const resolvedChannels = stats.topChannels
+      .map((c: any) => {
+        const ch = msg.guild!.channels.cache.get(c.channelId);
+        if (!ch) return null;
+        if (ch.isTextBased()) {
+          const everyone = msg.guild!.roles.everyone;
+          const perms = ch.permissionsFor(everyone);
+          if (perms && !perms.has('ViewChannel')) return null;
+        }
+        return {
+          name: resolveChannelName(msg.guild!, c.channelId),
+          messages: c.messages,
+          voiceMs: 0,
+        };
+      })
+      .filter((c): c is { name: string; messages: number; voiceMs: number } => c !== null)
+      .slice(0, 6);
+
+    const avatarUrl = targetUser.displayAvatarURL({ extension: 'png', size: 128 });
+    const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
+
+    const member = msg.guild!.members.cache.get(targetUser.id);
+    const displayName = member?.displayName || targetUser.globalName || targetUser.username;
+
+    const buf = await renderUserStats({
+      user: { username: displayName, avatarUrl },
+      guildName: msg.guild!.name,
+      rank, totalMembers: msg.guild!.memberCount,
+      totalMessages: combinedMessages, totalVoiceMs: combinedVoiceMs,
+      voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
+      totalDays: days, topChannels: resolvedChannels,
+      dailyMessages: stats.dailyBreakdown.map((d: any) => d.messages),
+      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile, topChannelName: resolvedChannels[0]?.name || '—',
+      msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
+      voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
+      legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
+      legacyMsgRank, legacyVoiceRank,
+      liveMessages: stats.totalMessages, liveVoiceMs: stats.totalVoiceMs,
+    });
+    await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'userstats.png' })] });
+  },
+});
+
 // === U ===
 registerCommand({
   name: 'u',
@@ -269,15 +364,32 @@ registerCommand({
   execute: async ({ msg, args }) => {
     let mode = 'messages';
     let limit = 10;
+    let page = 1;
     let periodArgs: string[] = [];
 
     for (const arg of args) {
-      if (['messages', 'voice', 'activity'].includes(arg.toLowerCase())) {
-        mode = arg.toLowerCase();
+      const lower = arg.toLowerCase();
+      if (['messages', 'message', 'msg', 'msgs', 'chat'].includes(lower)) {
+        mode = 'messages';
+      } else if (['voice', 'vc'].includes(lower)) {
+        mode = 'voice';
+      } else if (['activity'].includes(lower)) {
+        mode = 'activity';
+      } else if (['channels', 'textchannels', 'ch'].includes(lower)) {
+        mode = 'channels';
+      } else if (['voicechannels', 'vcchannels'].includes(lower)) {
+        mode = 'voicechannels';
       } else if (/^\d+$/.test(arg)) {
         const n = parseInt(arg);
-        if (n <= 50) limit = n;
-        else periodArgs.push(arg);
+        if (n <= 50) {
+          if (page === 1 && limit === 10) {
+            limit = n;
+          } else {
+            page = n;
+          }
+        } else {
+          periodArgs.push(arg);
+        }
       } else {
         periodArgs.push(arg);
       }
@@ -285,37 +397,74 @@ registerCommand({
 
     const { period, days: d } = parsePeriodArg(periodArgs);
     const days = d || 14;
+    const isAllTime = period === 'all';
+    const offset = (page - 1) * limit;
+    const fetchLimit = limit + offset;
+
+    const resolveAndFilter = async (users: any[], filterPrivate = false) => {
+      const resolved = await Promise.all(users.slice(offset, offset + limit).map(async u => {
+        const name = await resolveUserName(msg.guild!, u.userId);
+        const member = msg.guild!.members.cache.get(u.userId);
+        return { userId: name, messages: u.messages, voiceMs: u.voiceMs || 0, member };
+      }));
+      return resolved;
+    };
 
     if (mode === 'voice') {
-      const voice = await queries.getTopVoice(msg.guild!.id, days, period, limit);
+      const voice = await queries.getTopVoice(msg.guild!.id, days, period, fetchLimit);
       const totalVoice = voice.reduce((s, v) => s + v.voiceMs, 0);
-      const resolvedUsers = await Promise.all(voice.map(async v => ({
-        userId: await resolveUserName(msg.guild!, v.userId),
-        messages: 0,
-        voiceMs: v.voiceMs,
-      })));
+      const resolvedUsers = await resolveAndFilter(voice);
       const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
       const buf = await renderTopUsers(msg.guild!.name, `Voice • ${periodLabel}`, resolvedUsers, totalVoice);
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-voice.png' })] });
     } else if (mode === 'activity') {
-      const users = await queries.getServerRank(msg.guild!.id, days, period, limit);
-      const resolvedUsers = await Promise.all(users.map(async u => ({
-        userId: await resolveUserName(msg.guild!, u.userId),
-        messages: u.messages,
-        voiceMs: u.voiceMs,
-      })));
+      const users = await queries.getServerRank(msg.guild!.id, days, period, fetchLimit);
+      const resolvedUsers = await resolveAndFilter(users);
       const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
       const buf = await renderTopUsers(msg.guild!.name, `Activity • ${periodLabel}`, resolvedUsers, users.reduce((s, u) => s + u.messages, 0));
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-activity.png' })] });
-    } else {
-      const users = await queries.getTopUsers(msg.guild!.id, days, period, limit);
-      const totalMsgs = users.reduce((s, u) => s + u.messages, 0);
-      const resolvedUsers = await Promise.all(users.map(async u => ({
-        userId: await resolveUserName(msg.guild!, u.userId),
-        messages: u.messages,
-        voiceMs: 0,
-      })));
+    } else if (mode === 'channels') {
+      const channels = await queries.getTopChannels(msg.guild!.id, days, period, 10);
+      const filtered = await queries.filterPublicChannels(msg.guild!, channels);
       const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
+      const lines = filtered.map((c, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+        const name = c.channelName || `<#${c.channelId}>`;
+        return `${medal} ${name} — ${c.messages.toLocaleString()} msgs`;
+      });
+      await msg.reply({
+        embeds: [{
+          title: `📊 Top Channels — ${periodLabel}`,
+          description: lines.join('\n') || 'No data yet.',
+          color: 0x8b0000,
+          footer: { text: 'StatBot' },
+        }],
+      });
+    } else if (mode === 'voicechannels') {
+      const voiceChannels = await queries.getTopVoiceChannels(msg.guild!.id, days, 10);
+      const filtered = await queries.filterPublicVoiceChannels(msg.guild!, voiceChannels);
+      const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
+      const lines = filtered.map((c, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+        const name = c.channelName || `<#${c.channelId}>`;
+        const hours = (c.totalMs / 3600000).toFixed(1);
+        return `${medal} ${name} — ${hours}h`;
+      });
+      await msg.reply({
+        embeds: [{
+          title: `🔊 Top Voice Channels — ${periodLabel}`,
+          description: lines.join('\n') || 'No data yet.',
+          color: 0x8b0000,
+          footer: { text: 'StatBot' },
+        }],
+      });
+    } else {
+      // messages mode with legacy support
+      const includeLegacy = isAllTime;
+      const users = await queries.getTopUsersWithLegacy(msg.guild!.id, days, period, fetchLimit, includeLegacy);
+      const totalMsgs = users.reduce((s, u) => s + u.messages, 0);
+      const resolvedUsers = await resolveAndFilter(users);
+      const periodLabel = isAllTime ? 'All Time (Legacy + Live)' : (period ? parsePeriod(period).label : `Last ${days} Days`);
       const buf = await renderTopUsers(msg.guild!.name, `Messages • ${periodLabel}`, resolvedUsers, totalMsgs);
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top.png' })] });
     }
@@ -1082,6 +1231,78 @@ registerCommand({
           importLog?.message ? `\n**Details:** ${importLog.message}` : '',
         ].filter(Boolean).join('\n'),
         color: 0x8b0000,
+        footer: { text: 'StatBot' },
+      }],
+    });
+  },
+});
+
+// === LEGACYCHECK ===
+registerCommand({
+  name: 'legacycheck',
+  description: 'Verify legacy import data in database (admin only)',
+  category: 'Admin',
+  adminOnly: true,
+  execute: async ({ msg }) => {
+    if (!isAdmin(msg)) {
+      await msg.reply({ content: '❌ Administrator only.' });
+      return;
+    }
+
+    const [msgRows, voiceRows, linked, unlinked, total, importLog] = await Promise.all([
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY, messageCount14d: { gt: 0 } } }),
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY, voiceSeconds14d: { gt: 0 } } }),
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY, linked: true } }),
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY, linked: false } }),
+      prisma.legacyUserStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY } }),
+      prisma.importLog.findUnique({ where: { importKey_guildId: { importKey: IMPORT_KEY, guildId: msg.guild!.id } } }),
+    ]);
+
+    const msgTotal = await prisma.legacyUserStats.aggregate({
+      where: { guildId: msg.guild!.id, importKey: IMPORT_KEY },
+      _sum: { messageCount14d: true },
+    });
+    const voiceTotal = await prisma.legacyUserStats.aggregate({
+      where: { guildId: msg.guild!.id, importKey: IMPORT_KEY },
+      _sum: { voiceSeconds14d: true },
+    });
+
+    const channelTotal = await prisma.legacyChannelStats.count({ where: { guildId: msg.guild!.id, importKey: IMPORT_KEY } });
+    const channelMsgTotal = await prisma.legacyChannelStats.aggregate({
+      where: { guildId: msg.guild!.id, importKey: IMPORT_KEY },
+      _sum: { messageCount14d: true },
+    });
+    const channelVoiceTotal = await prisma.legacyChannelStats.aggregate({
+      where: { guildId: msg.guild!.id, importKey: IMPORT_KEY },
+      _sum: { voiceSeconds14d: true },
+    });
+
+    const status = importLog?.status || 'not imported';
+    const needsRepair = status === 'completed' && (total < 20 || msgRows < 10);
+
+    await msg.reply({
+      embeds: [{
+        title: '🔍 Legacy Import Check',
+        description: [
+          `**Import Key:** \`${IMPORT_KEY}\``,
+          `**Status:** ${status}`,
+          needsRepair ? '⚠️ **REPAIR NEEDED**: Marker says complete but rows are missing!' : '',
+          '',
+          `**User Records:** ${total}`,
+          `  • Message rows: ${msgRows}`,
+          `  • Voice rows: ${voiceRows}`,
+          `  • Linked: ${linked}`,
+          `  • Unlinked: ${unlinked}`,
+          `  • Total Messages: ${msgTotal._sum.messageCount14d?.toLocaleString() || 0}`,
+          `  • Total Voice: ${(voiceTotal._sum.voiceSeconds14d || 0 / 3600).toFixed(1)}h`,
+          '',
+          `**Channel Records:** ${channelTotal}`,
+          `  • Total Messages: ${channelMsgTotal._sum.messageCount14d?.toLocaleString() || 0}`,
+          `  • Total Voice: ${(channelVoiceTotal._sum.voiceSeconds14d || 0 / 3600).toFixed(1)}h`,
+          '',
+          `**Database:** PostgreSQL (persistent)`,
+        ].filter(Boolean).join('\n'),
+        color: needsRepair ? 0xeab308 : 0x8b0000,
         footer: { text: 'StatBot' },
       }],
     });

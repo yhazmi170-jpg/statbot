@@ -1,5 +1,6 @@
 import { prisma } from '../database/index.js';
 import { parsePeriod, type PeriodRange } from '../utils/period.js';
+import { IMPORT_KEY } from '../services/legacy-import.js';
 
 // Shared period resolver
 function resolvePeriod(days?: number, period?: string): PeriodRange {
@@ -13,6 +14,62 @@ function resolvePeriod(days?: number, period?: string): PeriodRange {
     return p;
   }
   return parsePeriod('14d');
+}
+
+// ─── LEGACY STATS HELPERS ──────────────────────────────────
+
+export async function getLegacyUserStats(guildId: string, discordUserId: string) {
+  return prisma.legacyUserStats.findFirst({
+    where: { guildId, discordUserId, importKey: IMPORT_KEY },
+  });
+}
+
+export async function getLegacyUserStatsByUsername(guildId: string, username: string) {
+  return prisma.legacyUserStats.findFirst({
+    where: { guildId, importedUsername: username, importKey: IMPORT_KEY },
+  });
+}
+
+export async function getAllLegacyUserStats(guildId: string) {
+  return prisma.legacyUserStats.findMany({
+    where: { guildId, importKey: IMPORT_KEY },
+    orderBy: { messageCount14d: 'desc' },
+  });
+}
+
+export async function getAllLegacyChannelStats(guildId: string) {
+  return prisma.legacyChannelStats.findMany({
+    where: { guildId, importKey: IMPORT_KEY },
+    orderBy: { messageCount14d: 'desc' },
+  });
+}
+
+export async function getLegacyLeaderboardMessages(guildId: string, limit: number = 15) {
+  const stats = await prisma.legacyUserStats.findMany({
+    where: { guildId, importKey: IMPORT_KEY, messageCount14d: { gt: 0 } },
+    orderBy: { messageCount14d: 'desc' },
+    take: limit,
+  });
+  return stats.map(s => ({
+    userId: s.discordUserId || s.importedUsername,
+    messages: s.messageCount14d,
+    voiceMs: s.voiceSeconds14d * 1000,
+    isLegacy: true,
+  }));
+}
+
+export async function getLegacyLeaderboardVoice(guildId: string, limit: number = 15) {
+  const stats = await prisma.legacyUserStats.findMany({
+    where: { guildId, importKey: IMPORT_KEY, voiceSeconds14d: { gt: 0 } },
+    orderBy: { voiceSeconds14d: 'desc' },
+    take: limit,
+  });
+  return stats.map(s => ({
+    userId: s.discordUserId || s.importedUsername,
+    messages: s.messageCount14d,
+    voiceMs: s.voiceSeconds14d * 1000,
+    isLegacy: true,
+  }));
 }
 
 // Server overview stats
@@ -131,6 +188,36 @@ export async function getTopUsers(guildId: string, days?: number, period?: strin
   }));
 }
 
+// Top users leaderboard with legacy support
+export async function getTopUsersWithLegacy(guildId: string, days?: number, period?: string, limit: number = 15, includeLegacy: boolean = false) {
+  const liveStats = await getTopUsers(guildId, days, period, limit);
+  
+  if (!includeLegacy) return liveStats;
+  
+  const legacyStats = await getLegacyLeaderboardMessages(guildId, limit);
+  
+  // Merge live + legacy
+  const merged = new Map<string, { userId: string; messages: number; voiceMs: number }>();
+  
+  for (const s of liveStats) {
+    merged.set(s.userId, { ...s });
+  }
+  
+  for (const s of legacyStats) {
+    const existing = merged.get(s.userId);
+    if (existing) {
+      existing.messages += s.messages;
+      existing.voiceMs += s.voiceMs;
+    } else {
+      merged.set(s.userId, { ...s });
+    }
+  }
+  
+  return Array.from(merged.values())
+    .sort((a, b) => b.messages - a.messages)
+    .slice(0, limit);
+}
+
 // Top channels leaderboard
 export async function getTopChannels(guildId: string, days?: number, period?: string, limit: number = 15) {
   const { since } = resolvePeriod(days, period);
@@ -148,6 +235,102 @@ export async function getTopChannels(guildId: string, days?: number, period?: st
     messages: s._sum?.messages || 0,
     users: typeof s._count === 'number' ? s._count : 0,
   }));
+}
+
+// Top channels leaderboard with legacy support
+export async function getTopChannelsWithLegacy(guildId: string, days?: number, period?: string, limit: number = 15, includeLegacy: boolean = false) {
+  const liveStats = await getTopChannels(guildId, days, period, limit);
+  
+  if (!includeLegacy) return liveStats;
+  
+  const legacyStats = await getAllLegacyChannelStats(guildId);
+  
+  const legacyFormatted = legacyStats
+    .filter(s => s.messageCount14d > 0)
+    .map(s => ({
+      channelId: s.channelId || `legacy:${s.channelName}`,
+      messages: s.messageCount14d,
+      users: 1,
+      isLegacy: true,
+      channelName: s.channelName,
+    }))
+    .slice(0, limit);
+  
+  const merged = new Map<string, { channelId: string; messages: number; users: number; channelName?: string }>();
+  
+  for (const s of liveStats) {
+    merged.set(s.channelId, { ...s, channelName: undefined });
+  }
+  
+  for (const s of legacyFormatted) {
+    const existing = merged.get(s.channelId);
+    if (existing) {
+      existing.messages += s.messages;
+      existing.users = Math.max(existing.users, s.users);
+    } else {
+      merged.set(s.channelId, { ...s });
+    }
+  }
+  
+  return Array.from(merged.values())
+    .sort((a, b) => b.messages - a.messages)
+    .slice(0, limit);
+}
+
+// ─── CHANNEL FILTERING ─────────────────────────────────────
+
+export interface FilteredChannel {
+  channelId: string;
+  messages: number;
+  users: number;
+  channelName?: string;
+}
+
+export interface VoiceChannelStats {
+  channelId: string;
+  totalMs: number;
+  sessions: number;
+  channelName?: string;
+}
+
+export async function filterPublicChannels(guild: any, channels: FilteredChannel[]): Promise<FilteredChannel[]> {
+  if (!guild || !guild.roles || !guild.roles.everyone) return channels;
+  
+  const everyoneRole = guild.roles.everyone;
+  
+  return channels.filter(c => {
+    if (!c.channelId || c.channelId.startsWith('legacy:')) return true;
+    
+    const channel = guild.channels.cache.get(c.channelId);
+    if (!channel) return false;
+    
+    if (!channel.isTextBased()) return false;
+    
+    const perms = channel.permissionsFor(everyoneRole);
+    if (!perms || !perms.has('ViewChannel')) return false;
+    
+    return true;
+  });
+}
+
+export async function filterPublicVoiceChannels(guild: any, channels: VoiceChannelStats[]): Promise<VoiceChannelStats[]> {
+  if (!guild || !guild.roles || !guild.roles.everyone) return channels;
+  
+  const everyoneRole = guild.roles.everyone;
+  
+  return channels.filter(c => {
+    if (!c.channelId) return false;
+    
+    const channel = guild.channels.cache.get(c.channelId);
+    if (!channel) return false;
+    
+    if (!channel.isVoiceBased()) return false;
+    
+    const perms = channel.permissionsFor(everyoneRole);
+    if (!perms || !perms.has('ViewChannel')) return false;
+    
+    return true;
+  });
 }
 
 // Activity heatmap (24h x 7days)
