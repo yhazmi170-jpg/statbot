@@ -147,32 +147,39 @@ const shutdown = async () => {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-// Login
-if (!config.token) {
-  log.error('DISCORD_TOKEN not set');
-  process.exit(1);
-}
-
+// Login - non-blocking (login may hang on Render, don't let it block HTTP)
 log.info({ tokenLen: config.token.length, tokenPrefix: config.token.substring(0, 10) }, 'Attempting Discord login...');
 
 let loginDone = false;
-const loginTimeout = setTimeout(() => {
-  if (!loginDone) {
-    log.error('Discord login hung for 30s, exiting to let Render restart');
-    process.exit(1);
-  }
-}, 30_000);
 
 client.once(Events.ClientReady, () => {
   loginDone = true;
-  clearTimeout(loginTimeout);
   log.info('ClientReady fired');
 });
 
+// Login in background — don't await
 client.login(config.token).then(() => {
   log.info('client.login() resolved');
 }).catch((err: any) => {
   log.error({ err: err.message }, 'Discord login failed');
-  clearTimeout(loginTimeout);
-  process.exit(1);
 });
+
+// Watchdog: if login hangs for 60s, retry
+const MAX_RETRIES = 5;
+let retries = 0;
+const loginWatchdog = setInterval(() => {
+  if (loginDone) {
+    clearInterval(loginWatchdog);
+    return;
+  }
+  retries++;
+  if (retries >= MAX_RETRIES) {
+    log.error(`Login failed after ${MAX_RETRIES} attempts, exiting`);
+    clearInterval(loginWatchdog);
+    process.exit(1);
+  }
+  log.warn(`Login attempt ${retries}/${MAX_RETRIES}...`);
+  client.login(config.token).catch((err: any) => {
+    log.error({ err: err.message }, `Retry ${retries} failed`);
+  });
+}, 30_000);
