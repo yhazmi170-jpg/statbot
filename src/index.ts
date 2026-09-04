@@ -10,10 +10,36 @@ import { startReportService } from './services/reports.js';
 
 const port = parseInt(process.env.PORT || '3000');
 
+// In-memory log buffer for remote debugging
+const logBuffer: string[] = [];
+const MAX_LOGS = 200;
+const origLog = log.info.bind(log);
+const origError = log.error.bind(log);
+const origWarn = log.warn.bind(log);
+
+function pushLog(level: string, msg: string) {
+  const entry = `[${new Date().toISOString()}] ${level}: ${msg}`;
+  logBuffer.push(entry);
+  if (logBuffer.length > MAX_LOGS) logBuffer.shift();
+}
+
+log.info = function(msg: any) { pushLog('INFO', typeof msg === 'string' ? msg : JSON.stringify(msg)); origLog.apply(log, arguments as any); } as any;
+log.error = function(msg: any) { pushLog('ERR', typeof msg === 'string' ? msg : JSON.stringify(msg)); origError.apply(log, arguments as any); } as any;
+log.warn = function(msg: any) { pushLog('WARN', typeof msg === 'string' ? msg : JSON.stringify(msg)); origWarn.apply(log, arguments as any); } as any;
+
 createServer((req, res) => {
   if (req.url === '/' || req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Statbot is running');
+  } else if (req.url === '/logs') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(logBuffer));
+  } else if (req.url === '/status') {
+    const uptime = Math.floor(process.uptime());
+    const mem = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    const discord = client.isReady();
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end(`discord=${discord} uptime=${uptime}s mem=${mem}MB guilds=${client.guilds.cache.size} commands=${getCommands().length} node=${process.version}`);
   } else {
     res.writeHead(404);
     res.end('Not Found');
