@@ -153,18 +153,21 @@ if (!config.token) {
   process.exit(1);
 }
 
-// Login with timeout
+log.info({ tokenLen: config.token.length, tokenPrefix: config.token.substring(0, 10) }, 'Attempting Discord login...');
+
+let loginDone = false;
 const loginTimeout = setTimeout(() => {
-  log.error('Discord login timed out after 60s');
-  process.exit(1);
-}, 60_000);
+  if (!loginDone) {
+    log.error('Discord login hung for 30s, exiting to let Render restart');
+    process.exit(1);
+  }
+}, 30_000);
 
 client.once(Events.ClientReady, () => {
+  loginDone = true;
   clearTimeout(loginTimeout);
-  log.info('ClientReady fired, clearing login timeout');
+  log.info('ClientReady fired');
 });
-
-log.info({ tokenLen: config.token.length, tokenPrefix: config.token.substring(0, 10) }, 'Attempting Discord login...');
 
 client.login(config.token).then(() => {
   log.info('client.login() resolved');
