@@ -37,9 +37,22 @@ client.once(Events.ClientReady, async (c) => {
     await ensureGuild(id, guild.name, guild.iconURL() || undefined).catch(() => {});
   }
 
+  // DM owner that bot is online
+  const OWNER_ID = '536278876247162882';
+  try {
+    const owner = await c.users.fetch(OWNER_ID);
+    await owner.send(`Statbot is online as **${c.user.tag}** in ${c.guilds.cache.size} server(s).`).catch(() => {});
+    log.info(`Sent online DM to owner`);
+  } catch (err: any) {
+    log.warn({ err: err.message }, 'Failed to DM owner');
+  }
+
   startReportService(client);
   log.info(`Tracking ${c.guilds.cache.size} guilds, ${getCommands().length} commands ready`);
 });
+
+client.on(Events.Error, (err: any) => log.error({ err: err.message }, 'Discord client error'));
+client.on(Events.Warn, (msg: string) => log.warn({ msg }, 'Discord warning'));
 
 client.on(Events.MessageCreate, async (msg) => {
   if (!msg.guild || msg.author.bot) return;
@@ -92,4 +105,16 @@ if (!config.token) {
   process.exit(1);
 }
 
-client.login(config.token);
+// Login with timeout
+const loginTimeout = setTimeout(() => {
+  log.error('Discord login timed out after 120s');
+  process.exit(1);
+}, 120_000);
+
+client.once(Events.ClientReady, () => clearTimeout(loginTimeout));
+
+client.login(config.token).catch((err: any) => {
+  log.error({ err: err.message }, 'Discord login failed');
+  clearTimeout(loginTimeout);
+  process.exit(1);
+});
