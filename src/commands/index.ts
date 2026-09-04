@@ -86,9 +86,11 @@ registerCommand({
   aliases: ['svstats', 'top'],
   execute: async ({ msg, args }) => {
     const { period } = parsePeriodArg(args);
-    const [guildStats, hourlyByDay] = await Promise.all([
+    const days = period ? parsePeriod(period).days : 14;
+    const [guildStats, hourlyByDay, peakHours] = await Promise.all([
       queries.getServerStats(msg.guild!.id, undefined, period),
       queries.getActivityHeatmap(msg.guild!.id, 7),
+      queries.getPeakHours(msg.guild!.id, days),
     ]);
     const resolvedChannels = guildStats.topChannels.map(c => ({
       name: resolveChannelName(msg.guild!, c.channelId),
@@ -100,6 +102,7 @@ registerCommand({
       messages: u.messages,
     })));
     const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
+    const peakHour = peakHours[0] ? formatPeakHour(peakHours[0].hour) : '—';
     const buf = await renderServerStats({
       guildName: msg.guild!.name,
       guild: { name: msg.guild!.name, memberCount: msg.guild!.memberCount },
@@ -108,6 +111,7 @@ registerCommand({
       topUsers: resolvedUsers,
       hourlyByDay,
       period: periodLabel,
+      peakHour,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'stats.png' })] });
   },

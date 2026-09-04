@@ -22,6 +22,7 @@ interface Data {
   weekdayMessages?: number[];
   hourLabels?: string[];
   dailyStats?: { totalMessages: number }[];
+  peakHour?: string;
 }
 
 export async function renderServerStats(d: Data): Promise<Buffer> {
@@ -60,14 +61,14 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     rightValue: numStr(totalMessages),
   });
 
-  const peak = hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 });
   const topChName = topChannels[0] ? topChannels[0].name : '—';
+  const peakHourStr = d.peakHour || formatPeakHour(hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 }).hour);
   const stats = [
     { label: 'Messages', value: numStr(totalMessages), color: T.accentBright },
     { label: 'Active Users', value: numStr(activeUsers) },
     { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
     { label: 'Top Channel', value: topChName },
-    { label: 'Peak Hour', value: formatPeakHour(peak.hour) },
+    { label: 'Peak Hour', value: peakHourStr },
   ];
   for (let i = 0; i < stats.length; i++) {
     statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
