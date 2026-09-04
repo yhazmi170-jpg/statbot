@@ -145,7 +145,7 @@ client.once(Events.ClientReady, () => {
   log.info('ClientReady fired, clearing login timeout');
 });
 
-log.info({ tokenLen: config.token.length }, 'Attempting Discord login...');
+log.info({ tokenLen: config.token.length, tokenPrefix: config.token.substring(0, 10) }, 'Attempting Discord login...');
 
 client.login(config.token).then(() => {
   log.info('client.login() resolved');

@@ -21,3 +21,6 @@ export const config = {
     aggregatedDays: 365,
   },
 } as const;
+
+// Log config on load
+console.log('[CONFIG] token_len=' + (config.token?.length || 0) + ' prefix=' + config.defaultPrefix + ' db=' + (config.databaseUrl ? 'set' : 'empty'));
