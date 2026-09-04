@@ -164,8 +164,8 @@ client.login(config.token).then(() => {
   log.error({ err: err.message }, 'Discord login failed');
 });
 
-// Watchdog: if login hangs for 60s, retry
-const MAX_RETRIES = 5;
+// Watchdog: if login hangs, retry
+const MAX_RETRIES = 15;
 let retries = 0;
 const loginWatchdog = setInterval(() => {
   if (loginDone) {
@@ -182,4 +182,4 @@ const loginWatchdog = setInterval(() => {
   client.login(config.token).catch((err: any) => {
     log.error({ err: err.message }, `Retry ${retries} failed`);
   });
-}, 30_000);
+}, 45_000);
