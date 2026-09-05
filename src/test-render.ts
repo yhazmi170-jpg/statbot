@@ -57,7 +57,7 @@ async function main() {
     ],
     hourlyMessages: hourlyByDay[0].map((messages, hour) => messages),
     weekdayMessages: [980, 1120, 890, 1050, 1200, 1400, 1258],
-    rank: 1, totalUsers: 347, percentile: 94,
+    rank: 1, totalUsers: 347, topPercent: 1,
   }));
 
   console.log('m?top...');

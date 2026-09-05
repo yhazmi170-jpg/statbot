@@ -218,8 +218,6 @@ registerCommand({
 
     const noData = combinedMessages === 0 && combinedVoiceMs === 0;
     const rank = noData ? allUsers.length + 1 : (allUsers.findIndex((u: any) => u.userId === targetUser.id) + 1 || allUsers.length);
-    // Percentile = percentage of users BELOW this user
-    const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
     // Top X% = percentage of users at or above this rank
     const topPercent = allUsers.length > 0 ? Math.max(1, Math.round((rank / allUsers.length) * 100)) : 0;
 
@@ -269,7 +267,7 @@ registerCommand({
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
       totalDays: days, topChannels: resolvedChannels,
       dailyMessages: stats.dailyBreakdown.map((d: any) => d.messages),
-      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile: topPercent, topChannelName: resolvedChannels[0]?.name || '—',
+      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, topPercent, topChannelName: resolvedChannels[0]?.name || '—',
       msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
       voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
       legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
@@ -327,7 +325,7 @@ registerCommand({
 
     const noData = combinedMessages === 0 && combinedVoiceMs === 0;
     const rank = noData ? allUsers.length + 1 : (allUsers.findIndex((u: any) => u.userId === targetUser.id) + 1 || allUsers.length);
-    const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
+    const topPercent = allUsers.length > 0 ? Math.max(1, Math.round((rank / allUsers.length) * 100)) : 0;
 
     const weekdayMsgs = Array(7).fill(0);
     for (const d of stats.dailyBreakdown) {
@@ -378,7 +376,7 @@ registerCommand({
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
       totalDays: days, topChannels: resolvedChannels,
       dailyMessages: stats.dailyBreakdown.map((d: any) => d.messages),
-      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile, topChannelName: resolvedChannels[0]?.name || '—',
+      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, topPercent, topChannelName: resolvedChannels[0]?.name || '—',
       msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
       voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
       legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
@@ -976,12 +974,16 @@ registerCommand({
       });
 
       if (chStats && chStats.messages > 0) {
-        // Estimate user messages from channel total (rough approximation)
-        await prisma.userDailyStats.update({
-          where: { guildId_userId_date: { guildId, userId: empty.userId, date: empty.date } },
-          data: { messages: 1 }, // Minimal estimate
-        }).catch(() => {});
-        filled++;
+        try {
+          // Estimate user messages from channel total (rough approximation)
+          await prisma.userDailyStats.update({
+            where: { guildId_userId_date: { guildId, userId: empty.userId, date: empty.date } },
+            data: { messages: Math.max(1, Math.min(chStats.messages, 1000)) }, // Cap at 1000
+          });
+          filled++;
+        } catch (err) {
+          log.error({ err: err instanceof Error ? err.message : String(err), guildId, date: empty.date }, 'backfill update failed');
+        }
       }
     }
 

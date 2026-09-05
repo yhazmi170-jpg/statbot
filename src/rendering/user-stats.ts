@@ -23,7 +23,7 @@ interface Data {
   rank: number;
   totalUsers?: number;
   totalMembers?: number;
-  percentile: number;
+  topPercent: number;
   voiceSessions?: number;
   msgsThisWeek?: number;
   msgsThisMonth?: number;
@@ -92,7 +92,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   text(ctx, `${guildName}  •  ${d.periodLabel || `Last ${d.totalDays} Days`}`, textX, PAD + 48, { size: 16, weight: 500, color: T.textMuted });
 
   text(ctx, `#${d.rank}`, W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
-  text(ctx, `of ${numStr(totalUsers)} users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });
+  text(ctx, `of ${numStr(totalUsers)} active users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });
 
   const topChannelLabel = topChannels.length > 0 ? topChannels[0].name : '—';
 
@@ -105,7 +105,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     { label: 'Voice Hours', value: voiceValue },
     { label: 'Active Days', value: `${d.activeDays}/${d.totalDays}` },
     { label: 'Top Channel', value: topChannelLabel },
-    { label: 'Percentile', value: `Top ${d.percentile}%` },
+    { label: 'Ranking', value: `Top ${d.topPercent}%` },
   ];
   for (let i = 0; i < stats.length; i++) {
     statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
