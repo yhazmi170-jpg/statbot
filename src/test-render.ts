@@ -119,6 +119,16 @@ async function main() {
     },
     totalMessages: 82492, totalVoiceMs: 456789000, uniqueUsers: 347,
     msgsPerDay: 2750, peakHour: '9:00 PM', peakDay: 'Saturday', joins: 89, leaves: 23,
+    topChannels: [
+      { channelId: '123', messages: 8900 },
+      { channelId: '456', messages: 4200 },
+      { channelId: '789', messages: 2100 },
+    ],
+    topUsers: [
+      { userId: 'bunnycatdpg', messages: 1890 },
+      { userId: 'ninqz', messages: 1420 },
+      { userId: 'semeiological', messages: 1380 },
+    ],
   }));
 
   console.log('m?growth...');

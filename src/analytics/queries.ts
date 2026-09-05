@@ -2,6 +2,35 @@ import { prisma } from '../database/index.js';
 import { parsePeriod, type PeriodRange } from '../utils/period.js';
 import { IMPORT_KEY } from '../services/legacy-import.js';
 
+// Timezone conversion helper
+function convertHourToTimezone(utcHour: number, timezone: string): number {
+  try {
+    // Use a reference date to get the timezone offset
+    const refDate = new Date('2024-01-15T00:00:00Z');
+    const utcHourDate = new Date(refDate);
+    utcHourDate.setUTCHours(utcHour, 0, 0, 0);
+    
+    // Convert to target timezone
+    const targetTime = utcHourDate.toLocaleString('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      hour12: false,
+    });
+    
+    return parseInt(targetTime, 10) % 24;
+  } catch {
+    return utcHour;
+  }
+}
+
+export async function getGuildTimezone(guildId: string): Promise<string> {
+  const guild = await prisma.guild.findUnique({
+    where: { id: guildId },
+    select: { timezone: true },
+  });
+  return guild?.timezone || 'UTC';
+}
+
 // Shared period resolver
 function resolvePeriod(days?: number, period?: string): PeriodRange {
   if (period) return parsePeriod(period);
@@ -85,9 +114,17 @@ export async function getServerStats(guildId: string, days?: number, period?: st
       where: { guildId, date: { gte: since } },
       _sum: { totalVoiceMs: true },
     }),
+    // Active users = users with messages OR voice activity
     prisma.userDailyStats.groupBy({
       by: ['userId'],
-      where: { guildId, date: { gte: since }, messages: { gt: 0 } },
+      where: {
+        guildId,
+        date: { gte: since },
+        OR: [
+          { messages: { gt: 0 } },
+          { voiceMs: { gt: 0 } },
+        ],
+      },
       _count: { userId: true },
     }),
     prisma.guildDailyStats.findMany({
@@ -132,8 +169,9 @@ export async function getServerStats(guildId: string, days?: number, period?: st
 // User stats
 export async function getUserStats(guildId: string, userId: string, days?: number, period?: string) {
   const { since } = resolvePeriod(days, period);
+  const now = new Date();
 
-  const [dailyStats, voiceSessions, topChannels, dailyBreakdown] = await Promise.all([
+  const [dailyStats, voiceSessions, topChannels, dailyBreakdown, activeVoiceSession] = await Promise.all([
     prisma.userDailyStats.aggregate({
       where: { guildId, userId, date: { gte: since } },
       _sum: { messages: true, voiceMs: true },
@@ -155,18 +193,46 @@ export async function getUserStats(guildId: string, userId: string, days?: numbe
       where: { guildId, userId, date: { gte: since } },
       orderBy: { date: 'asc' },
     }),
+    // Get currently active voice session for this user
+    prisma.voiceSession.findFirst({
+      where: {
+        guildId,
+        userId,
+        endedAt: null,
+        startedAt: { lte: now },
+      },
+      select: {
+        startedAt: true,
+        channelId: true,
+        channelName: true,
+      },
+    }),
   ]);
+
+  // Calculate active voice session duration if user is currently in voice
+  let activeVoiceMs = 0;
+  let activeVoiceChannelId: string | null = null;
+  let activeVoiceChannelName: string | null = null;
+
+  if (activeVoiceSession) {
+    activeVoiceMs = now.getTime() - activeVoiceSession.startedAt.getTime();
+    activeVoiceChannelId = activeVoiceSession.channelId;
+    activeVoiceChannelName = activeVoiceSession.channelName;
+  }
 
   return {
     totalMessages: dailyStats._sum.messages || 0,
-    totalVoiceMs: Number(dailyStats._sum.voiceMs || 0),
+    totalVoiceMs: Number(dailyStats._sum.voiceMs || 0) + activeVoiceMs,
     voiceSessions: voiceSessions._count.id,
-    voiceTotalMs: Number(voiceSessions._sum.durationMs || 0),
+    voiceTotalMs: Number(voiceSessions._sum.durationMs || 0) + activeVoiceMs,
     topChannels: topChannels.map(c => ({
       channelId: c.topChannelId || '',
       messages: c._count?.topChannelId || 0,
     })),
     dailyBreakdown,
+    activeVoiceMs,
+    activeVoiceChannelId,
+    activeVoiceChannelName,
   };
 }
 
@@ -215,6 +281,36 @@ export async function getTopUsersWithLegacy(guildId: string, days?: number, peri
   
   return Array.from(merged.values())
     .sort((a, b) => b.messages - a.messages)
+    .slice(0, limit);
+}
+
+// Top voice leaderboard with legacy support
+export async function getTopVoiceWithLegacy(guildId: string, days?: number, period?: string, limit: number = 15, includeLegacy: boolean = false) {
+  const liveStats = await getTopVoice(guildId, days, period, limit);
+  
+  if (!includeLegacy) return liveStats;
+  
+  const legacyStats = await getLegacyLeaderboardVoice(guildId, limit);
+  
+  // Merge live + legacy
+  const merged = new Map<string, { userId: string; messages: number; voiceMs: number }>();
+  
+  for (const s of liveStats) {
+    merged.set(s.userId, { ...s });
+  }
+  
+  for (const s of legacyStats) {
+    const existing = merged.get(s.userId);
+    if (existing) {
+      existing.messages += s.messages;
+      existing.voiceMs += s.voiceMs;
+    } else {
+      merged.set(s.userId, { ...s });
+    }
+  }
+  
+  return Array.from(merged.values())
+    .sort((a, b) => b.voiceMs - a.voiceMs)
     .slice(0, limit);
 }
 
@@ -339,6 +435,8 @@ export async function getActivityHeatmap(guildId: string, days: number = 7) {
   since.setDate(since.getDate() - days);
   since.setHours(0, 0, 0, 0);
 
+  const timezone = await getGuildTimezone(guildId);
+
   const hourly = await prisma.guildHourlyStats.findMany({
     where: { guildId, date: { gte: since } },
     orderBy: [{ date: 'asc' }, { hour: 'asc' }],
@@ -347,9 +445,11 @@ export async function getActivityHeatmap(guildId: string, days: number = 7) {
   // Build 7x24 grid
   const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
   for (const h of hourly) {
+    // Convert UTC hour to guild timezone
+    const localHour = await convertHourToTimezone(h.hour, timezone);
     const dayOfWeek = new Date(h.date).getDay();
     const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Mon=0, Sun=6
-    grid[adjustedDay][h.hour] += h.messages;
+    grid[adjustedDay][localHour] += h.messages;
   }
 
   return grid;
@@ -378,13 +478,14 @@ export async function getTopVoice(guildId: string, days?: number, period?: strin
   const stats = await prisma.userDailyStats.groupBy({
     by: ['userId'],
     where: { guildId, date: { gte: since }, voiceMs: { gt: 0 } },
-    _sum: { voiceMs: true },
+    _sum: { voiceMs: true, messages: true },
     orderBy: { _sum: { voiceMs: 'desc' } },
     take: limit,
   });
 
   return stats.map(s => ({
     userId: s.userId,
+    messages: s._sum.messages || 0,
     voiceMs: Number(s._sum.voiceMs || 0),
   }));
 }
@@ -409,16 +510,23 @@ export async function getPeakHours(guildId: string, days: number = 30) {
   since.setDate(since.getDate() - days);
   since.setHours(0, 0, 0, 0);
 
+  const timezone = await getGuildTimezone(guildId);
+
   const hourly = await prisma.guildHourlyStats.groupBy({
     by: ['hour'],
     where: { guildId, date: { gte: since } },
     _sum: { messages: true },
     orderBy: { _sum: { messages: 'desc' } },
   });
-  return hourly.map(h => ({
-    hour: h.hour,
+
+  // Convert UTC hours to guild timezone
+  const converted = await Promise.all(hourly.map(async h => ({
+    hour: await convertHourToTimezone(h.hour, timezone),
     messages: h._sum.messages || 0,
-  }));
+  })));
+
+  // Re-sort by messages after conversion
+  return converted.sort((a, b) => b.messages - a.messages);
 }
 
 // Recent voice sessions

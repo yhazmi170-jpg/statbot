@@ -1,106 +1,157 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, fillRect, text, numStr } from './theme.js';
-import { headerBanner, panelBg, panelHeader, panelContentY, footer, COL_GAP, sanitizeText } from './components.js';
+import { T, W, H, PAD, GAP, PANEL_W, PANEL_H, PANELS, STAT_W, STAT_H, GRID_TOP, fillRect, text, numStr } from './theme.js';
+import { headerBanner, statCard, panelBg, panelHeader, panelContentY, areaLineChart, rowItem, heatmap, footer, sanitizeText, formatPeakHour, panelClip, panelRestore } from './components.js';
 
+interface Channel { name?: string; channelId?: string; messages: number; voiceMs?: number }
+interface Hourly { hour: number; messages: number }
 interface Data {
-  guild: { name: string; memberCount: number; channelCount: number; roleCount: number; emojiCount: number; boostLevel: number; boostCount: number; createdAt: string; ownerTag?: string; };
-  totalMessages: number; totalVoiceMs: number; uniqueUsers: number;
-  msgsPerDay: number; peakHour: string; peakDay: string; joins: number; leaves: number;
+  guildName?: string;
+  guild?: { name: string; memberCount?: number; channelCount?: number; roleCount?: number; emojiCount?: number; boostLevel?: number; boostCount?: number; createdAt?: string; ownerTag?: string };
+  guildId?: string;
+  iconUrl?: string;
+  period?: string;
+  totalMessages: number;
+  activeUsers?: number;
+  uniqueUsers?: number;
+  totalVoiceMs: number;
+  topChannels: Channel[];
+  topUsers: { userId: string; messages: number }[];
+  hourlyActivity?: Hourly[];
+  hourlyByDay?: number[][];
+  heatmapGrid?: number[][];
+  weekdayMessages?: number[];
+  hourLabels?: string[];
+  dailyStats?: { totalMessages: number }[];
+  peakHour?: string;
+  peakDay?: string;
+  msgsPerDay?: number;
+  joins?: number;
+  leaves?: number;
 }
 
 export async function renderServerOverview(d: Data): Promise<Buffer> {
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
+
   fillRect(ctx, 0, 0, W, H, T.bg);
 
-  headerBanner(ctx, sanitizeText(d.guild.name), `Server Overview  •  Created ${d.guild.createdAt}`, {
-    rightLabel: 'Members', rightValue: numStr(d.guild.memberCount),
+  const guildName = d.guildName || d.guild?.name || 'Server';
+  const totalMessages = d.totalMessages;
+  const activeUsers = d.activeUsers || d.uniqueUsers || 0;
+  const period = d.period || 'Last 14 Days';
+
+  let hourlyActivity: Hourly[];
+  if (d.hourlyActivity) {
+    hourlyActivity = d.hourlyActivity;
+  } else if (d.hourlyByDay) {
+    hourlyActivity = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      messages: d.hourlyByDay!.reduce((sum, day) => sum + (day[h] || 0), 0),
+    }));
+  } else {
+    hourlyActivity = Array.from({ length: 24 }, (_, h) => ({ hour: h, messages: 0 }));
+  }
+
+  const heatmapGrid = d.heatmapGrid || d.hourlyByDay || Array.from({ length: 7 }, () => Array(24).fill(0));
+
+  const topChannels = d.topChannels.map(c => ({
+    name: sanitizeText(c.name || c.channelId || 'unknown'),
+    messages: c.messages,
+    voiceMs: c.voiceMs || 0,
+  }));
+
+  headerBanner(ctx, sanitizeText(guildName), period, {
+    rightLabel: 'Total Messages',
+    rightValue: numStr(totalMessages),
   });
 
-  const infoItems = [
-    { label: 'Channels', value: String(d.guild.channelCount) },
-    { label: 'Roles', value: String(d.guild.roleCount) },
-    { label: 'Emojis', value: String(d.guild.emojiCount) },
-    { label: 'Boosts', value: `Lv.${d.guild.boostLevel} (${d.guild.boostCount})` },
+  const topChName = topChannels[0] ? topChannels[0].name : '—';
+  const peakHourStr = d.peakHour || formatPeakHour(hourlyActivity.reduce((a, b) => b.messages > a.messages ? b : a, { hour: 0, messages: 0 }).hour);
+  const stats = [
+    { label: 'Messages', value: numStr(totalMessages), color: T.accentBright },
+    { label: 'Active Users', value: numStr(activeUsers) },
+    { label: 'Voice Hours', value: (d.totalVoiceMs / 3600000).toFixed(1) + 'h' },
+    { label: 'Top Channel', value: topChName },
+    { label: 'Peak Hour', value: peakHourStr },
   ];
-  const infoW = (W - PAD * 2 - GAP * (infoItems.length - 1)) / infoItems.length;
-  const infoY = PAD + 75 + 15;
-  for (let i = 0; i < infoItems.length; i++) {
-    const ix = PAD + i * (infoW + GAP);
-    fillRect(ctx, ix, infoY, infoW, 60, T.panel, 12);
-    ctx.strokeStyle = T.border;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(ix, infoY, infoW, 60);
-    text(ctx, infoItems[i].label.toUpperCase(), ix + 14, infoY + 10, { size: 13, weight: 700, color: T.textDim });
-    text(ctx, infoItems[i].value, ix + 14, infoY + 30, { size: 24, weight: 700, color: T.text });
+  for (let i = 0; i < stats.length; i++) {
+    statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
   }
 
+  // ─── PANEL 1: Message Activity (topLeft) ───
   const tl = PANELS.topLeft;
   panelBg(ctx, tl);
-  panelHeader(ctx, tl, 'Activity');
-  const actItems = [
-    ['Total Messages', numStr(d.totalMessages)], ['Active Users', numStr(d.uniqueUsers)],
-    ['Voice Hours', (d.totalVoiceMs / 3600000).toFixed(1) + 'h'], ['Messages/Day', numStr(Math.round(d.msgsPerDay))],
-    ['Peak Hour', d.peakHour], ['Peak Day', d.peakDay],
-  ];
-  let ry = panelContentY(tl) + 8;
-  for (const [label, value] of actItems) {
-    text(ctx, label.toUpperCase(), tl.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
-    text(ctx, value, tl.x + tl.w - 16, ry, { size: 18, weight: 700, color: T.text, align: 'right' });
-    ry += 38;
-    fillRect(ctx, tl.x + 16, ry - 8, tl.w - 32, 1, T.borderSubtle);
-  }
+  const tlContentY = panelContentY(tl);
+  const tlContentH = tl.h - 40;
+  panelClip(ctx, { x: tl.x, y: tlContentY, w: tl.w, h: tlContentH });
+  panelHeader(ctx, tl, 'Message Activity', period);
+  areaLineChart(ctx, tl.x + 50, tlContentY, tl.w - 70, tlContentH - 15,
+    hourlyActivity.map(h => h.messages), {
+      labels: hourlyActivity.map(h => `${String(h.hour).padStart(2, '0')}`),
+    });
+  panelRestore(ctx);
 
+  // ─── PANEL 2: Top Users (topRight) ───
   const tr = PANELS.topRight;
   panelBg(ctx, tr);
-  panelHeader(ctx, tr, 'Growth');
-  const net = d.joins - d.leaves;
-  const growItems = [
-    { label: 'Joined', value: numStr(d.joins), color: T.green },
-    { label: 'Left', value: numStr(d.leaves), color: T.red },
-    { label: 'Net Growth', value: `${net >= 0 ? '+' : ''}${numStr(net)}`, color: net >= 0 ? T.green : T.red },
-    { label: 'Growth %', value: d.guild.memberCount > 0 ? ((net / d.guild.memberCount) * 100).toFixed(1) + '%' : '0%', color: net >= 0 ? T.green : T.red },
-  ];
-  ry = panelContentY(tr) + 8;
-  for (const item of growItems) {
-    text(ctx, item.label.toUpperCase(), tr.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
-    text(ctx, item.value, tr.x + tr.w - 16, ry, { size: 18, weight: 700, color: item.color, align: 'right' });
-    ry += 38;
-    fillRect(ctx, tr.x + 16, ry - 8, tr.w - 32, 1, T.borderSubtle);
+  const trContentY = panelContentY(tr);
+  const trContentH = tr.h - 40;
+  panelClip(ctx, { x: tr.x, y: trContentY, w: tr.w, h: trContentH });
+  panelHeader(ctx, tr, 'Top Users', `${d.topUsers.length} users`);
+  const maxMsg = d.topUsers[0]?.messages || 1;
+  const userRowH = Math.floor((trContentH - 4) / Math.min(d.topUsers.length, 12));
+  for (let i = 0; i < Math.min(d.topUsers.length, 12); i++) {
+    const ry = trContentY + i * userRowH;
+    const u = d.topUsers[i];
+    const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
+    rowItem(ctx, tr.x, ry, tr.w, userRowH, {
+      rank: i + 1,
+      rankColor,
+      label: u.userId,
+      value: numStr(u.messages),
+      barPct: pct,
+      isLast: i === Math.min(d.topUsers.length, 12) - 1,
+    });
   }
+  panelRestore(ctx);
 
+  // ─── PANEL 3: Top Channels (bottomLeft) ───
   const bl = PANELS.bottomLeft;
   panelBg(ctx, bl);
-  panelHeader(ctx, bl, 'Quick Stats');
-  const quickItems = [
-    { label: 'Avg. Messages/User', value: d.uniqueUsers > 0 ? numStr(Math.round(d.totalMessages / d.uniqueUsers)) : '—' },
-    { label: 'Voice Sessions/User', value: d.uniqueUsers > 0 ? (d.totalVoiceMs / d.uniqueUsers / 60000).toFixed(1) + 'm' : '—' },
-    { label: 'Message/Peak Hour', value: numStr(Math.round(d.totalMessages / 30)) },
-  ];
-  ry = panelContentY(bl) + 8;
-  for (const item of quickItems) {
-    text(ctx, item.label.toUpperCase(), bl.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
-    text(ctx, item.value, bl.x + bl.w - 16, ry, { size: 18, weight: 700, color: T.text, align: 'right' });
-    ry += 38;
-    fillRect(ctx, bl.x + 16, ry - 8, bl.w - 32, 1, T.borderSubtle);
+  const blContentY = panelContentY(bl);
+  const blContentH = bl.h - 40;
+  panelClip(ctx, { x: bl.x, y: blContentY, w: bl.w, h: blContentH });
+  panelHeader(ctx, bl, 'Top Channels', `${topChannels.length} channels`);
+  const maxCh = topChannels[0]?.messages || 1;
+  const chRowH = Math.floor((blContentH - 4) / Math.min(topChannels.length, 12));
+  for (let i = 0; i < Math.min(topChannels.length, 12); i++) {
+    const ry = blContentY + i * chRowH;
+    const ch = topChannels[i];
+    const pct = maxCh > 0 ? ch.messages / maxCh : 0;
+    const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
+    rowItem(ctx, bl.x, ry, bl.w, chRowH, {
+      rank: i + 1,
+      rankColor,
+      label: ch.name,
+      value: numStr(ch.messages),
+      barPct: pct,
+      isLast: i === Math.min(topChannels.length, 12) - 1,
+    });
   }
+  panelRestore(ctx);
 
+  // ─── PANEL 4: Activity Heatmap (bottomRight) ───
   const br = PANELS.bottomRight;
   panelBg(ctx, br);
-  panelHeader(ctx, br, 'Server Info');
-  const infoDetails = [
-    { label: 'Owner', value: d.guild.ownerTag || 'Unknown' },
-    { label: 'Boost Level', value: `Level ${d.guild.boostLevel}` },
-    { label: 'Total Boosts', value: String(d.guild.boostCount) },
-  ];
-  ry = panelContentY(br) + 8;
-  for (const item of infoDetails) {
-    text(ctx, item.label.toUpperCase(), br.x + 16, ry, { size: 13, weight: 700, color: T.textDim });
-    text(ctx, item.value, br.x + br.w - 16, ry, { size: 18, weight: 700, color: T.text, align: 'right' });
-    ry += 38;
-    fillRect(ctx, br.x + 16, ry - 8, br.w - 32, 1, T.borderSubtle);
-  }
+  const brContentY = panelContentY(br);
+  const brContentH = br.h - 40;
+  panelClip(ctx, { x: br.x, y: brContentY, w: br.w, h: brContentH });
+  panelHeader(ctx, br, 'Activity Heatmap', 'Hourly Activity');
+  heatmap(ctx, br.x + 16, brContentY, br.w - 32, brContentH - 15, heatmapGrid);
+  panelRestore(ctx);
 
   footer(ctx, 'StatBot  •  m?help for commands');
+
   return canvas.toBuffer('image/png');
 }

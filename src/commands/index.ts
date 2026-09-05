@@ -3,10 +3,12 @@ import { prisma, ensureGuild, log } from '../database/index.js';
 import { renderServerStats } from '../rendering/server-stats.js';
 import { renderUserStats } from '../rendering/user-stats.js';
 import { renderTopUsers } from '../rendering/top.js';
+import { renderLeaderboard } from '../rendering/leaderboard.js';
 import { renderHeatmap } from '../rendering/heatmap.js';
 import { renderActivityChart } from '../rendering/activity.js';
 import { renderHelp } from '../rendering/help.js';
 import { renderServerOverview } from '../rendering/server-overview.js';
+import { formatPeakHour } from '../rendering/components.js';
 import { renderGrowth } from '../rendering/growth.js';
 import { renderCompare } from '../rendering/compare.js';
 import { renderInactive } from '../rendering/inactive.js';
@@ -153,6 +155,14 @@ registerCommand({
       peakDay,
       joins: totalJoins,
       leaves: totalLeaves,
+      topChannels: stats.topChannels.map(c => ({
+        channelId: c.channelId,
+        messages: c.messages,
+      })),
+      topUsers: stats.topUsers.map(u => ({
+        userId: u.userId,
+        messages: u.messages,
+      })),
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'server.png' })] });
   },
@@ -248,6 +258,7 @@ registerCommand({
       legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
       legacyMsgRank, legacyVoiceRank,
       liveMessages: stats.totalMessages, liveVoiceMs: stats.totalVoiceMs,
+      periodLabel,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'userstats.png' })] });
   },
@@ -336,8 +347,14 @@ registerCommand({
     const avatarUrl = targetUser.displayAvatarURL({ extension: 'png', size: 128 });
     const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
 
+    // Get member for safe username rendering
+    const member = msg.guild!.members.cache.get(targetUser.id);
+
     const buf = await renderUserStats({
-      user: { username: targetUser.username, avatarUrl },
+      user: { 
+        username: member?.displayName || targetUser.globalName || targetUser.username, 
+        avatarUrl 
+      },
       guildName: msg.guild!.name,
       rank, totalMembers: msg.guild!.memberCount,
       totalMessages: combinedMessages, totalVoiceMs: combinedVoiceMs,
@@ -350,6 +367,7 @@ registerCommand({
       legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
       legacyMsgRank, legacyVoiceRank,
       liveMessages: stats.totalMessages, liveVoiceMs: stats.totalVoiceMs,
+      periodLabel,
     });
     await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'userstats.png' })] });
   },
@@ -358,11 +376,11 @@ registerCommand({
 // === TOP ===
 registerCommand({
   name: 'top',
-  description: 'Top members leaderboard',
+  description: 'Top members leaderboard / server overview',
   category: 'Leaderboards',
   aliases: ['leaderboard', 'lb'],
   execute: async ({ msg, args }) => {
-    let mode = 'messages';
+    let mode = 'overview';
     let limit = 10;
     let page = 1;
     let periodArgs: string[] = [];
@@ -375,6 +393,8 @@ registerCommand({
         mode = 'voice';
       } else if (['activity'].includes(lower)) {
         mode = 'activity';
+      } else if (['overview', 'server', 'stats'].includes(lower)) {
+        mode = 'overview';
       } else if (['channels', 'textchannels', 'ch'].includes(lower)) {
         mode = 'channels';
       } else if (['voicechannels', 'vcchannels'].includes(lower)) {
@@ -405,23 +425,97 @@ registerCommand({
       const resolved = await Promise.all(users.slice(offset, offset + limit).map(async u => {
         const name = await resolveUserName(msg.guild!, u.userId);
         const member = msg.guild!.members.cache.get(u.userId);
-        return { userId: name, messages: u.messages, voiceMs: u.voiceMs || 0, member };
+        return { 
+          userId: name, 
+          messages: u.messages, 
+          voiceMs: u.voiceMs || 0, 
+          member: member ? { 
+            displayName: member.displayName || undefined, 
+            globalName: member.user.globalName ?? undefined, 
+            username: member.user.username 
+          } : undefined 
+        };
       }));
       return resolved;
     };
 
-    if (mode === 'voice') {
-      const voice = await queries.getTopVoice(msg.guild!.id, days, period, fetchLimit);
-      const totalVoice = voice.reduce((s, v) => s + v.voiceMs, 0);
-      const resolvedUsers = await resolveAndFilter(voice);
-      const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
-      const buf = await renderTopUsers(msg.guild!.name, `Voice • ${periodLabel}`, resolvedUsers, totalVoice);
+    if (mode === 'overview') {
+      // Server overview - use server-overview renderer
+      const { period } = parsePeriodArg(args);
+      const days = period ? parsePeriod(period).days : 14;
+      const [guildStats, hourlyByDay, peakHours] = await Promise.all([
+        queries.getServerStats(msg.guild!.id, undefined, period),
+        queries.getActivityHeatmap(msg.guild!.id, 7),
+        queries.getPeakHours(msg.guild!.id, days),
+      ]);
+      const resolvedChannels = guildStats.topChannels.map(c => ({
+        name: resolveChannelName(msg.guild!, c.channelId),
+        messages: c.messages,
+        voiceMs: 0,
+      }));
+      const resolvedUsers = await Promise.all(guildStats.topUsers.map(async u => ({
+        userId: await resolveUserName(msg.guild!, u.userId),
+        messages: u.messages,
+      })));
+      const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
+      const peakHour = peakHours[0] ? formatPeakHour(peakHours[0].hour) : '—';
+      const buf = await renderServerOverview({
+        guildName: msg.guild!.name,
+        guild: { 
+          name: msg.guild!.name, 
+          memberCount: msg.guild!.memberCount,
+          channelCount: msg.guild!.channels.cache.size,
+        },
+        ...guildStats,
+        topChannels: resolvedChannels,
+        topUsers: resolvedUsers,
+        hourlyByDay,
+        period: periodLabel,
+        peakHour,
+      });
+      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'overview.png' })] });
+    } else if (mode === 'messages') {
+      const includeLegacy = isAllTime;
+      const users = await queries.getTopUsersWithLegacy(msg.guild!.id, days, period, fetchLimit, includeLegacy);
+      const totalMsgs = users.reduce((s, u) => s + u.messages, 0);
+      const resolvedUsers = await resolveAndFilter(users);
+      const periodLabel = isAllTime ? 'All Time (Legacy + Live)' : (period ? parsePeriod(period).label : `Last ${days} Days`);
+      const buf = await renderLeaderboard({
+        guildName: msg.guild!.name,
+        period: periodLabel,
+        title: 'Top Message Users',
+        users: resolvedUsers,
+        totalMsgs,
+        metric: 'messages',
+      });
+      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-messages.png' })] });
+    } else if (mode === 'voice') {
+      const includeLegacy = isAllTime;
+      const users = await queries.getTopVoiceWithLegacy(msg.guild!.id, days, period, fetchLimit, includeLegacy);
+      const totalVoice = users.reduce((s, u) => s + u.voiceMs, 0);
+      const resolvedUsers = await resolveAndFilter(users);
+      const periodLabel = isAllTime ? 'All Time (Legacy + Live)' : (period ? parsePeriod(period).label : `Last ${days} Days`);
+      const buf = await renderLeaderboard({
+        guildName: msg.guild!.name,
+        period: periodLabel,
+        title: 'Top Voice Users',
+        users: resolvedUsers,
+        totalMsgs: totalVoice,
+        metric: 'voice',
+      });
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-voice.png' })] });
     } else if (mode === 'activity') {
       const users = await queries.getServerRank(msg.guild!.id, days, period, fetchLimit);
       const resolvedUsers = await resolveAndFilter(users);
       const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
-      const buf = await renderTopUsers(msg.guild!.name, `Activity • ${periodLabel}`, resolvedUsers, users.reduce((s, u) => s + u.messages, 0));
+      const buf = await renderLeaderboard({
+        guildName: msg.guild!.name,
+        period: periodLabel,
+        title: 'Activity Rank',
+        users: resolvedUsers,
+        totalMsgs: users.reduce((s, u) => s + u.messages, 0),
+        metric: 'messages',
+      });
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-activity.png' })] });
     } else if (mode === 'channels') {
       const channels = await queries.getTopChannels(msg.guild!.id, days, period, 10);
@@ -458,15 +552,19 @@ registerCommand({
           footer: { text: 'StatBot' },
         }],
       });
-    } else {
-      // messages mode with legacy support
-      const includeLegacy = isAllTime;
-      const users = await queries.getTopUsersWithLegacy(msg.guild!.id, days, period, fetchLimit, includeLegacy);
-      const totalMsgs = users.reduce((s, u) => s + u.messages, 0);
+    } else if (mode === 'activity') {
+      const users = await queries.getServerRank(msg.guild!.id, days, period, fetchLimit);
       const resolvedUsers = await resolveAndFilter(users);
-      const periodLabel = isAllTime ? 'All Time (Legacy + Live)' : (period ? parsePeriod(period).label : `Last ${days} Days`);
-      const buf = await renderTopUsers(msg.guild!.name, `Messages • ${periodLabel}`, resolvedUsers, totalMsgs);
-      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top.png' })] });
+      const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
+      const buf = await renderLeaderboard({
+        guildName: msg.guild!.name,
+        period: periodLabel,
+        title: 'Activity Rank',
+        users: resolvedUsers,
+        totalMsgs: users.reduce((s, u) => s + u.messages, 0),
+        metric: 'messages',
+      });
+      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-activity.png' })] });
     }
   },
 });
@@ -959,58 +1057,7 @@ registerCommand({
 });
 
 // === FAKE ===
-import { generateFakeServer, generateFakeUser, generateFakeReport } from '../fake/generator.js';
-import { renderFakeServerStats } from '../rendering/fake-server.js';
-import { renderFakeUserStats } from '../rendering/fake-user.js';
-import { renderFakeReport } from '../rendering/fake-report.js';
-
-registerCommand({
-  name: 'fake',
-  description: 'Generate fictional statistics (admin only, demo)',
-  category: 'Admin',
-  adminOnly: true,
-  execute: async ({ msg, args }) => {
-    if (!isAdmin(msg)) {
-      await msg.reply({ content: '❌ You need Administrator permissions to generate fake statistics.' });
-      return;
-    }
-
-    const sub = args[0]?.toLowerCase();
-    const mentionedUser = msg.mentions.users.first();
-
-    if (mentionedUser) {
-      const fakeUser = generateFakeUser(mentionedUser.username);
-      const buf = await renderFakeUserStats(fakeUser);
-      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-userstats.png' })] });
-      return;
-    }
-
-    if (sub === 'user') {
-      const fakeUser = generateFakeUser();
-      const buf = await renderFakeUserStats(fakeUser);
-      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-userstats.png' })] });
-      return;
-    }
-
-    if (sub === 'weekly') {
-      const fakeReport = generateFakeReport('weekly');
-      const buf = await renderFakeReport(fakeReport);
-      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-weekly.png' })] });
-      return;
-    }
-
-    if (sub === 'monthly') {
-      const fakeReport = generateFakeReport('monthly');
-      const buf = await renderFakeReport(fakeReport);
-      await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-monthly.png' })] });
-      return;
-    }
-
-    const fakeServer = generateFakeServer();
-    const buf = await renderFakeServerStats(fakeServer);
-    await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'fake-stats.png' })] });
-  },
-});
+// Removed m?fake command - real commands must not use fake data
 
 // === HELP ===
 registerCommand({
@@ -1310,14 +1357,6 @@ registerCommand({
 });
 
 // ─── Helpers ──────────────────────────────────────────
-
-function formatPeakHour(peakHourRaw: any): string {
-  let hour = typeof peakHourRaw === 'string' ? parseInt(peakHourRaw.split(':')[0], 10) : Number(peakHourRaw);
-  if (isNaN(hour) || hour < 0 || hour > 23) return '12:00 PM';
-  const period = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${hour12}:00 ${period}`;
-}
 
 function resolveChannelName(guild: Guild, channelId: string): string {
   const ch = guild.channels.cache.get(channelId);

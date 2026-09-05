@@ -13,6 +13,7 @@ interface Data {
   totalVoiceMs: number;
   activeDays: number;
   totalDays: number;
+  periodLabel?: string;
   firstSeen?: string;
   topChannelName?: string;
   topChannels: Channel[];
@@ -35,6 +36,10 @@ interface Data {
   legacyVoiceRank?: number | null;
   liveMessages?: number;
   liveVoiceMs?: number;
+  // Active voice
+  activeVoiceMs?: number;
+  activeVoiceChannelId?: string;
+  activeVoiceChannelName?: string;
 }
 
 export async function renderUserStats(d: Data): Promise<Buffer> {
@@ -84,7 +89,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
 
   const textX = avatarX + avatarSize + 16;
   text(ctx, username, textX, PAD + 16, { size: 28, weight: 700, color: T.text });
-  text(ctx, `${guildName}  •  Last ${d.totalDays} Days`, textX, PAD + 48, { size: 16, weight: 500, color: T.textMuted });
+  text(ctx, `${guildName}  •  ${d.periodLabel || `Last ${d.totalDays} Days`}`, textX, PAD + 48, { size: 16, weight: 500, color: T.textMuted });
 
   text(ctx, `#${d.rank}`, W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
   text(ctx, `of ${numStr(totalUsers)} users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });

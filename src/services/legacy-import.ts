@@ -1,8 +1,8 @@
-import { Guild, Client } from 'discord.js';
+import { Guild } from 'discord.js';
 import { prisma, log } from '../database/index.js';
 import { LEGACY_USERS, LEGACY_CHANNELS } from '../legacy-statbot.js';
 
-export const IMPORT_KEY = 'legacy-statbot-marlboro-v1';
+export const IMPORT_KEY = 'legacy-statbot-marlboro-v2';
 
 export interface ImportResult {
   usersImported: number;
@@ -37,7 +37,7 @@ export async function importLegacyData(guild: Guild): Promise<ImportResult> {
 
   log.info(`Starting legacy import ${IMPORT_KEY} for ${guild.name}`);
 
-  // Fetch all guild members for username matching
+  // Fetch all guild members for potential linking of unlinked records
   let members;
   try {
     members = await guild.members.fetch();
@@ -46,18 +46,11 @@ export async function importLegacyData(guild: Guild): Promise<ImportResult> {
     members = new Map();
   }
 
-  // Build member lookup: lowercase username -> member
-  const memberByUsername = new Map<string, { id: string; username: string; displayName: string }>();
-  const memberByDisplayName = new Map<string, { id: string; username: string; displayName: string }>();
-
+  // Build member lookup by Discord ID (for direct ID matching)
+  const memberById = new Map<string, { id: string; username: string; displayName: string }>();
   for (const [, member] of members) {
     if (member.user.bot) continue;
-    memberByUsername.set(member.user.username.toLowerCase(), {
-      id: member.user.id,
-      username: member.user.username,
-      displayName: member.displayName,
-    });
-    memberByDisplayName.set(member.displayName.toLowerCase(), {
+    memberById.set(member.user.id, {
       id: member.user.id,
       username: member.user.username,
       displayName: member.displayName,
@@ -68,52 +61,25 @@ export async function importLegacyData(guild: Guild): Promise<ImportResult> {
   let usersLinked = 0;
   let usersUnlinked = 0;
 
-  // Import user records
+  // Import user records - use direct Discord ID from LEGACY_USERS
   for (const record of LEGACY_USERS) {
-    const normalizedUsername = record.username.toLowerCase();
-
-    // Try to find a matching Discord member
-    let matchedMember: { id: string; username: string; displayName: string } | null = null;
-
-    // 1. Exact username match (case-insensitive)
-    const exactMatch = memberByUsername.get(normalizedUsername);
-    if (exactMatch) {
-      matchedMember = exactMatch;
-    }
-
-    // 2. Exact display name match (case-insensitive) if no username match
-    if (!matchedMember) {
-      const displayMatch = memberByDisplayName.get(normalizedUsername);
-      if (displayMatch) {
-        matchedMember = displayMatch;
-      }
-    }
-
-    // 3. Strip dots/underscores from username for fuzzy matching
-    if (!matchedMember) {
-      const stripped = normalizedUsername.replace(/[._]/g, '');
-      for (const [key, member] of memberByUsername) {
-        if (key.replace(/[._]/g, '') === stripped) {
-          matchedMember = member;
-          break;
-        }
-      }
-    }
+    // Use the direct Discord ID from the record
+    const matchedMember = record.discordUserId ? memberById.get(record.discordUserId) || null : null;
 
     try {
       await prisma.legacyUserStats.upsert({
         where: {
           guildId_importedUsername_importKey: {
             guildId,
-            importedUsername: record.username,
+            importedUsername: record.importedUsername,
             importKey: IMPORT_KEY,
           },
         },
         create: {
           guildId,
-          discordUserId: matchedMember?.id || null,
-          importedUsername: record.username,
-          messageCount14d: record.messages14d,
+          discordUserId: record.discordUserId,
+          importedUsername: record.importedUsername,
+          messageCount14d: record.messageCount14d,
           voiceSeconds14d: record.voiceSeconds14d,
           messageRank: record.messageRank || null,
           voiceRank: record.voiceRank || null,
@@ -121,21 +87,25 @@ export async function importLegacyData(guild: Guild): Promise<ImportResult> {
           importKey: IMPORT_KEY,
         },
         update: {
-          discordUserId: matchedMember?.id || undefined,
+          discordUserId: record.discordUserId,
           linked: !!matchedMember,
+          messageCount14d: record.messageCount14d,
+          voiceSeconds14d: record.voiceSeconds14d,
+          messageRank: record.messageRank || null,
+          voiceRank: record.voiceRank || null,
         },
       });
 
       usersImported++;
       if (matchedMember) {
         usersLinked++;
-        log.info(`Linked legacy user ${record.username} -> ${matchedMember.id} (${matchedMember.username})`);
+        log.info(`Linked legacy user ${record.importedUsername} -> ${matchedMember.id} (${matchedMember.username})`);
       } else {
         usersUnlinked++;
-        log.warn(`Unlinked legacy user: ${record.username} (no match found)`);
+        log.warn(`Unlinked legacy user: ${record.importedUsername} (no match found)`);
       }
     } catch (err: any) {
-      log.error({ err: err.message, username: record.username }, 'Failed to import legacy user');
+      log.error({ err: err.message, username: record.importedUsername }, 'Failed to import legacy user');
     }
   }
 
@@ -148,7 +118,6 @@ export async function importLegacyData(guild: Guild): Promise<ImportResult> {
     // Try to match channel by name
     let matchedChannelId: string | null = null;
 
-    // Try exact name match in guild channels
     const ch = guild.channels.cache.find(c => c.name.toLowerCase() === record.channelName.toLowerCase());
     if (ch) {
       matchedChannelId = ch.id;
@@ -167,8 +136,8 @@ export async function importLegacyData(guild: Guild): Promise<ImportResult> {
           guildId,
           channelId: matchedChannelId,
           channelName: record.channelName,
-          channelType: record.messages14d > 0 ? 'text' : 'voice',
-          messageCount14d: record.messages14d,
+          channelType: record.messageCount14d > 0 ? 'text' : 'voice',
+          messageCount14d: record.messageCount14d,
           voiceSeconds14d: record.voiceSeconds14d || 0,
           channelRank: record.channelRank || null,
           voiceChannelRank: record.voiceChannelRank || null,
@@ -178,6 +147,10 @@ export async function importLegacyData(guild: Guild): Promise<ImportResult> {
         update: {
           channelId: matchedChannelId || undefined,
           linked: !!matchedChannelId,
+          messageCount14d: record.messageCount14d,
+          voiceSeconds14d: record.voiceSeconds14d || 0,
+          channelRank: record.channelRank || null,
+          voiceChannelRank: record.voiceChannelRank || null,
         },
       });
 
