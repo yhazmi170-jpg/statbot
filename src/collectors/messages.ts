@@ -72,15 +72,38 @@ async function flush() {
         update: { messages: { increment: 1 } },
       }).catch(() => {});
 
-      // User daily stats
+      // User daily stats (topChannelId/topHour are no longer overwritten here;
+      // real per-user per-channel/per-hour counts live in the new tables)
       await prisma.userDailyStats.upsert({
         where: { guildId_userId_date: { guildId: entry.guildId, userId: entry.userId, date: today } },
-        create: { guildId: entry.guildId, userId: entry.userId, date: today, messages: 1, topChannelId: entry.channelId, topHour: hour },
+        create: { guildId: entry.guildId, userId: entry.userId, date: today, messages: 1 },
         update: {
           messages: { increment: 1 },
-          topChannelId: entry.channelId,
-          topHour: hour,
         },
+      }).catch(() => {});
+
+      // Per-user per-channel daily stats
+      await prisma.userChannelStats.upsert({
+        where: {
+          guildId_userId_channelId_date: {
+            guildId: entry.guildId, userId: entry.userId, channelId: entry.channelId, date: today,
+          },
+        },
+        create: {
+          guildId: entry.guildId, userId: entry.userId, channelId: entry.channelId, date: today, messages: 1,
+        },
+        update: { messages: { increment: 1 } },
+      }).catch(() => {});
+
+      // Per-user hourly stats
+      await prisma.userHourlyStats.upsert({
+        where: {
+          guildId_userId_date_hour: {
+            guildId: entry.guildId, userId: entry.userId, date: today, hour,
+          },
+        },
+        create: { guildId: entry.guildId, userId: entry.userId, date: today, hour, messages: 1 },
+        update: { messages: { increment: 1 } },
       }).catch(() => {});
 
       // Channel stats

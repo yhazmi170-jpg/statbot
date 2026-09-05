@@ -1,4 +1,4 @@
-import { Message, AttachmentBuilder, PermissionFlagsBits, Guild } from 'discord.js';
+import { Message, AttachmentBuilder, PermissionFlagsBits, Guild, type User } from 'discord.js';
 import { prisma, ensureGuild, log } from '../database/index.js';
 import { renderServerStats } from '../rendering/server-stats.js';
 import { renderUserStats } from '../rendering/user-stats.js';
@@ -17,6 +17,11 @@ import { renderWeeklyReport, renderMonthlyReport } from '../rendering/reports.js
 import { parsePeriod } from '../utils/period.js';
 import { linkLegacyUser, getUnlinkedUsers, getUnlinkedChannels, getLegacyStatsForUser, IMPORT_KEY } from '../services/legacy-import.js';
 import * as queries from '../analytics/queries.js';
+import {
+  resolveWindow, getWindowRankedUsers, getActiveWindowUserCount,
+  getWindowServerTotalMessages, getWindowUserDetail, getChannelTrackingSince,
+  computeWindowCard, validateUserCard, type WindowCard,
+} from '../analytics/window-stats.js';
 
 export interface CommandContext {
   msg: Message;
@@ -106,7 +111,8 @@ registerCommand({
         name: resolveChannelName(msg.guild!, c.channelId),
         messages: c.messages,
         voiceMs: 0,
-      }));
+      }))
+      .filter((c): c is { name: string; messages: number; voiceMs: number } => c.name !== null);
     const resolvedUsers = await Promise.all(guildStats.topUsers.map(async u => ({
       userId: await resolveUserName(msg.guild!, u.userId),
       messages: u.messages,
@@ -182,6 +188,149 @@ registerCommand({
   },
 });
 
+// Shared user-card builder. m?me and m?u consume the EXACT same ranked
+// dataset as the m?top leaderboard, so the card can never diverge again.
+// Hard assertions run BEFORE rendering; a broken PNG is never sent.
+async function buildUserCard(msg: Message, targetUser: User, periodArgs: string[]): Promise<void> {
+  const guild = msg.guild!;
+  const { period } = parsePeriodArg(periodArgs);
+  const win = resolveWindow(undefined, period);
+
+  const [users, activeCount, serverTotal, detail, trackingSince] = await Promise.all([
+    getWindowRankedUsers(guild.id, undefined, period),
+    getActiveWindowUserCount(guild.id, win.since),
+    getWindowServerTotalMessages(guild.id, win.since),
+    getWindowUserDetail(guild.id, targetUser.id, win.since),
+    getChannelTrackingSince(guild.id),
+  ]);
+
+  const computed = computeWindowCard(users, targetUser.id, {
+    activeUserCount: activeCount,
+    serverTotalMessages: serverTotal,
+  });
+
+  const channelMessagesTotal = detail.channels.reduce((s, c) => s + c.messages, 0);
+  const card: WindowCard = {
+    ...computed,
+    windowLabel: win.label,
+    windowSince: win.since,
+    channels: detail.channels,
+    channelMessagesTotal,
+  };
+
+  // Independent cross-check against the exact m?top leaderboard entry.
+  const isAllTime = period === 'all';
+  const topBoard = isAllTime
+    ? await queries.getTopUsersWithLegacy(guild.id, undefined, period, 15, true)
+    : await queries.getTopUsers(guild.id, undefined, period, 15);
+  const lbEntry = topBoard.find(u => u.userId === targetUser.id);
+  const leaderboardMessages = lbEntry ? lbEntry.messages : card.messages;
+  const legacyStats = await getLegacyStatsForUser(guild.id, targetUser.id);
+
+  const validation = validateUserCard(card, leaderboardMessages);
+  // Legacy-only users predate per-user channel tracking; don't warn about a
+  // channel trail that can never exist for them.
+  const legacyOnly = isAllTime && detail.daily.length === 0;
+  const warnings = legacyOnly
+    ? validation.warnings.filter(w => !w.includes('trail user messages'))
+    : validation.warnings;
+
+  console.log('[USER STATS DEBUG]', {
+    guildId: guild.id,
+    userId: targetUser.id,
+    windowLabel: win.label,
+    windowSince: win.since.toISOString(),
+    allTimeMessages: legacyStats?.messageCount14d || 0,
+    fourteenDayMessages: card.messages,
+    leaderboardMessages,
+    rank: card.rank,
+    rankingPopulation: card.rankingPopulation,
+    activeUserCount: card.activeUserCount,
+    activeUsersExcludeFlag: card.activeUserCount - card.rankingPopulation,
+    serverTotalMessages: card.serverTotalMessages,
+    activeDays: detail.activeDays,
+  });
+
+if (!validation.ok) {
+    console.error('[USER STATS VALIDATION FAILED]', {
+      userId: targetUser.id, errors: validation.errors, warnings,
+    });
+    await msg.reply({
+      embeds: [{
+        title: 'Cannot render user card (data inconsistency)',
+        description: `\`\`\`\n${validation.errors.join('\n')}\`\`\`\nNo PNG was sent. Fix the data pipeline and re-run.`,
+        color: 0x8b0000,
+      }],
+    });
+    return;
+  }
+  for (const w of warnings) {
+    console.warn('[USER STATS WARNING]', { userId: targetUser.id, warning: w });
+  }
+  for (const w of validation.warnings) {
+    console.warn('[USER STATS WARNING]', { userId: targetUser.id, warning: w });
+  }
+
+  // Channels: sorted desc from query, drop deleted/private, THEN take top 6.
+  const resolvedChannels = detail.channels
+    .map(c => {
+      const ch = guild.channels.cache.get(c.channelId);
+      if (!ch) return null;
+      if (ch.isTextBased()) {
+        const perms = ch.permissionsFor(guild.roles.everyone);
+        if (perms && !perms.has('ViewChannel')) return null;
+      }
+      return {
+        name: resolveChannelName(guild, c.channelId) ?? `#${ch.name}`,
+        channelId: c.channelId,
+        messages: c.messages,
+        voiceMs: 0,
+      };
+    })
+    .filter((c): c is { name: string; channelId: string; messages: number; voiceMs: number } => c !== null)
+    .slice(0, 6);
+
+  console.log('[USER CHANNEL DEBUG]', {
+    userId: targetUser.id,
+    windowLabel: win.label,
+    rawChannels: detail.channels.length,
+    shownChannels: resolvedChannels.length,
+    channelMessagesTotal,
+    topChannel: resolvedChannels[0]?.name ?? null,
+    topChannelMatchesRows: resolvedChannels[0]?.name === detail.channels[0]?.channelId
+      ? guild.channels.cache.has(detail.channels[0].channelId)
+      : null,
+  });
+
+  const member = guild.members.cache.get(targetUser.id);
+  const displayName = member?.displayName || targetUser.globalName || targetUser.username;
+  const avatarUrl = targetUser.displayAvatarURL({ extension: 'png', size: 128 });
+
+  const buf = await renderUserStats({
+    user: { username: displayName, avatarUrl },
+    guildName: guild.name,
+    rank: card.rank ?? 0,
+    rankingPopulation: card.rankingPopulation,
+    totalMessages: card.messages,
+    totalVoiceMs: card.voiceMs,
+    activeDays: detail.activeDays,
+    totalDays: win.days,
+    topChannels: resolvedChannels,
+    topChannelName: resolvedChannels[0]?.name || '—',
+    dailyMessages: detail.daily.map(d => d.messages),
+    weekdayMessages: detail.weekday,
+    hourlyMessages: detail.hourly,
+    topPercent: card.topPercent ?? 0,
+    msgsThisMonth: card.messages,
+    voiceThisMonth: card.voiceMs,
+    periodLabel: win.label,
+    channelsTrackingSince: resolvedChannels.length === 0 && card.messages > 0 && trackingSince
+      ? trackingSince.toISOString().split('T')[0]
+      : undefined,
+  });
+  await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'userstats.png' })] });
+}
+
 // === ME ===
 registerCommand({
   name: 'me',
@@ -200,82 +349,7 @@ registerCommand({
       }
     }
 
-    const { period } = parsePeriodArg(periodArgs);
-    const days = period ? parsePeriod(period).days : 14;
-
-    const [stats, allUsers, legacyStats] = await Promise.all([
-      queries.getUserStats(msg.guild!.id, targetUser.id, days, period),
-      queries.getTopUsers(msg.guild!.id, days, period, 9999),
-      getLegacyStatsForUser(msg.guild!.id, targetUser.id),
-    ]);
-
-    const legacyMsgs = legacyStats?.messageCount14d || 0;
-    const legacyVoiceSec = legacyStats?.voiceSeconds14d || 0;
-    const legacyMsgRank = legacyStats?.messageRank || null;
-    const legacyVoiceRank = legacyStats?.voiceRank || null;
-    const combinedMessages = stats.totalMessages + legacyMsgs;
-    const combinedVoiceMs = stats.totalVoiceMs + (legacyVoiceSec * 1000);
-
-    const noData = combinedMessages === 0 && combinedVoiceMs === 0;
-    const rank = noData ? allUsers.length + 1 : (allUsers.findIndex((u: any) => u.userId === targetUser.id) + 1 || allUsers.length);
-    // Top X% = percentage of users at or above this rank
-    const topPercent = allUsers.length > 0 ? Math.max(1, Math.round((rank / allUsers.length) * 100)) : 0;
-
-    const weekdayMsgs = Array(7).fill(0);
-    for (const d of stats.dailyBreakdown) {
-      const dow = new Date(d.date).getDay();
-      const idx = dow === 0 ? 6 : dow - 1;
-      weekdayMsgs[idx] += d.messages;
-    }
-
-    const hourlyMsgs = Array(24).fill(0);
-    for (const d of stats.dailyBreakdown) {
-      if (d.topHour != null && d.messages > 0) {
-        hourlyMsgs[d.topHour] += d.messages;
-      }
-    }
-
-    const resolvedChannels = stats.topChannels
-      .map((c: any) => {
-        const ch = msg.guild!.channels.cache.get(c.channelId);
-        if (!ch) return null;
-        if (ch.isTextBased()) {
-          const everyone = msg.guild!.roles.everyone;
-          const perms = ch.permissionsFor(everyone);
-          if (perms && !perms.has('ViewChannel')) return null;
-        }
-        return {
-          name: resolveChannelName(msg.guild!, c.channelId),
-          messages: c.messages,
-          voiceMs: 0,
-        };
-      })
-      .filter((c): c is { name: string; messages: number; voiceMs: number } => c !== null)
-      .slice(0, 6);
-
-    const avatarUrl = targetUser.displayAvatarURL({ extension: 'png', size: 128 });
-    const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
-
-    const member = msg.guild!.members.cache.get(targetUser.id);
-    const displayName = member?.displayName || targetUser.globalName || targetUser.username;
-
-    const buf = await renderUserStats({
-      user: { username: displayName, avatarUrl },
-      guildName: msg.guild!.name,
-      rank, totalMembers: allUsers.length,
-      totalMessages: combinedMessages, totalVoiceMs: combinedVoiceMs,
-      voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
-      totalDays: days, topChannels: resolvedChannels,
-      dailyMessages: stats.dailyBreakdown.map((d: any) => d.messages),
-      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, topPercent, topChannelName: resolvedChannels[0]?.name || '—',
-      msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
-      voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
-      legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
-      legacyMsgRank, legacyVoiceRank,
-      liveMessages: stats.totalMessages, liveVoiceMs: stats.totalVoiceMs,
-      periodLabel,
-    });
-    await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'userstats.png' })] });
+    await buildUserCard(msg, targetUser, periodArgs);
   },
 });
 
@@ -306,85 +380,7 @@ registerCommand({
       }
     }
 
-    const { period } = parsePeriodArg(periodArgs);
-    const days = period ? parsePeriod(period).days : 14;
-
-    const [stats, allUsers, legacyStats] = await Promise.all([
-      queries.getUserStats(msg.guild!.id, targetUser.id, days, period),
-      queries.getTopUsers(msg.guild!.id, days, period, 9999),
-      getLegacyStatsForUser(msg.guild!.id, targetUser.id),
-    ]);
-
-    // Combine legacy + live data
-    const legacyMsgs = legacyStats?.messageCount14d || 0;
-    const legacyVoiceSec = legacyStats?.voiceSeconds14d || 0;
-    const legacyMsgRank = legacyStats?.messageRank || null;
-    const legacyVoiceRank = legacyStats?.voiceRank || null;
-    const combinedMessages = stats.totalMessages + legacyMsgs;
-    const combinedVoiceMs = stats.totalVoiceMs + (legacyVoiceSec * 1000);
-
-    const noData = combinedMessages === 0 && combinedVoiceMs === 0;
-    const rank = noData ? allUsers.length + 1 : (allUsers.findIndex((u: any) => u.userId === targetUser.id) + 1 || allUsers.length);
-    const topPercent = allUsers.length > 0 ? Math.max(1, Math.round((rank / allUsers.length) * 100)) : 0;
-
-    const weekdayMsgs = Array(7).fill(0);
-    for (const d of stats.dailyBreakdown) {
-      const dow = new Date(d.date).getDay();
-      const idx = dow === 0 ? 6 : dow - 1;
-      weekdayMsgs[idx] += d.messages;
-    }
-
-    const hourlyMsgs = Array(24).fill(0);
-    for (const d of stats.dailyBreakdown) {
-      if (d.topHour != null && d.messages > 0) {
-        hourlyMsgs[d.topHour] += d.messages;
-      }
-    }
-
-    const resolvedChannels = stats.topChannels
-      .map((c: any) => {
-        const ch = msg.guild!.channels.cache.get(c.channelId);
-        if (!ch) return null;
-        if (ch.isTextBased()) {
-          const everyone = msg.guild!.roles.everyone;
-          const perms = ch.permissionsFor(everyone);
-          if (perms && !perms.has('ViewChannel')) return null;
-        }
-        return {
-          name: resolveChannelName(msg.guild!, c.channelId),
-          messages: c.messages,
-          voiceMs: 0,
-        };
-      })
-      .filter((c): c is { name: string; messages: number; voiceMs: number } => c !== null)
-      .slice(0, 6);
-
-    const avatarUrl = targetUser.displayAvatarURL({ extension: 'png', size: 128 });
-    const periodLabel = period ? parsePeriod(period).label : 'Last 14 Days';
-
-    // Get member for safe username rendering
-    const member = msg.guild!.members.cache.get(targetUser.id);
-
-    const buf = await renderUserStats({
-      user: { 
-        username: member?.displayName || targetUser.globalName || targetUser.username, 
-        avatarUrl 
-      },
-      guildName: msg.guild!.name,
-      rank, totalMembers: allUsers.length,
-      totalMessages: combinedMessages, totalVoiceMs: combinedVoiceMs,
-      voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
-      totalDays: days, topChannels: resolvedChannels,
-      dailyMessages: stats.dailyBreakdown.map((d: any) => d.messages),
-      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, topPercent, topChannelName: resolvedChannels[0]?.name || '—',
-      msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
-      voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
-      legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
-      legacyMsgRank, legacyVoiceRank,
-      liveMessages: stats.totalMessages, liveVoiceMs: stats.totalVoiceMs,
-      periodLabel,
-    });
-    await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'userstats.png' })] });
+    await buildUserCard(msg, targetUser, periodArgs);
   },
 });
 
@@ -467,7 +463,7 @@ registerCommand({
         name: resolveChannelName(msg.guild!, c.channelId),
         messages: c.messages,
         voiceMs: 0,
-      }));
+      })).filter((c): c is { name: string; messages: number; voiceMs: number } => c.name !== null);
       const resolvedUsers = await Promise.all(guildStats.topUsers.map(async u => ({
         userId: await resolveUserName(msg.guild!, u.userId),
         messages: u.messages,
@@ -543,9 +539,9 @@ registerCommand({
       const lines = channels.map((c, i) => {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
         const chObj = msg.guild!.channels.cache.get(c.channelId);
-        const name = chObj ? `#${chObj.name}` : `#deleted-channel`;
-        return `${medal} ${name} — ${c.messages.toLocaleString()} msgs`;
-      });
+        if (!chObj) return null;
+        return `${medal} #${chObj.name} — ${c.messages.toLocaleString()} msgs`;
+      }).filter((l): l is string => l !== null);
       await msg.reply({
         embeds: [{
           title: `📊 Top Channels — ${periodLabel}`,
@@ -565,10 +561,10 @@ registerCommand({
       const lines = voiceChannels.map((c, i) => {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
         const chObj = msg.guild!.channels.cache.get(c.channelId);
-        const name = chObj ? `#${chObj.name}` : `#deleted-channel`;
+        if (!chObj) return null;
         const hours = (c.totalMs / 3600000).toFixed(1);
-        return `${medal} ${name} — ${hours}h`;
-      });
+        return `${medal} #${chObj.name} — ${hours}h`;
+      }).filter((l): l is string => l !== null);
       await msg.reply({
         embeds: [{
           title: `🔊 Top Voice Channels — ${periodLabel}`,
@@ -614,9 +610,9 @@ registerCommand({
     const lines = ch.map((c, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
       const chObj = msg.guild!.channels.cache.get(c.channelId);
-      const name = chObj ? `#${chObj.name}` : `#deleted-channel`;
-      return `${medal} ${name} — ${c.messages.toLocaleString()} msgs`;
-    });
+      if (!chObj) return null;
+      return `${medal} #${chObj.name} — ${c.messages.toLocaleString()} msgs`;
+    }).filter((l): l is string => l !== null);
     await msg.reply({
       embeds: [{
         title: `📊 Top Channels — ${periodLabel}`,
@@ -874,7 +870,7 @@ registerCommand({
     const resolvedChannels = topChannels.map(c => ({
       name: resolveChannelName(msg.guild!, c.channelId),
       messages: c.messages,
-    }));
+    })).filter((c): c is { name: string; messages: number } => c.name !== null);
     const resolvedUsers = await Promise.all(topUsers.map(async u => ({
       userId: await resolveUserName(msg.guild!, u.userId),
       messages: u.messages,
@@ -917,7 +913,7 @@ registerCommand({
     const resolvedChannels = topChannels.map(c => ({
       name: resolveChannelName(msg.guild!, c.channelId),
       messages: c.messages,
-    }));
+    })).filter((c): c is { name: string; messages: number } => c.name !== null);
     const resolvedUsers = await Promise.all(topUsers.map(async u => ({
       userId: await resolveUserName(msg.guild!, u.userId),
       messages: u.messages,
@@ -1395,9 +1391,9 @@ registerCommand({
 
 // ─── Helpers ──────────────────────────────────────────
 
-function resolveChannelName(guild: Guild, channelId: string): string {
+function resolveChannelName(guild: Guild, channelId: string): string | null {
   const ch = guild.channels.cache.get(channelId);
-  return ch ? `#${ch.name}` : '#deleted-channel';
+  return ch ? `#${ch.name}` : null;
 }
 
 async function resolveUserName(guild: Guild, userId: string): Promise<string> {

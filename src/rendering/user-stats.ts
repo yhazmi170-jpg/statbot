@@ -16,6 +16,7 @@ interface Data {
   periodLabel?: string;
   firstSeen?: string;
   topChannelName?: string;
+  channelsTrackingSince?: string;
   topChannels: Channel[];
   hourlyMessages?: number[];
   weekdayMessages: number[];
@@ -23,6 +24,7 @@ interface Data {
   rank: number;
   totalUsers?: number;
   totalMembers?: number;
+  rankingPopulation?: number;
   topPercent: number;
   voiceSessions?: number;
   msgsThisWeek?: number;
@@ -91,8 +93,9 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   text(ctx, username, textX, PAD + 16, { size: 28, weight: 700, color: T.text });
   text(ctx, `${guildName}  •  ${d.periodLabel || `Last ${d.totalDays} Days`}`, textX, PAD + 48, { size: 16, weight: 500, color: T.textMuted });
 
-  text(ctx, `#${d.rank}`, W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
-  text(ctx, `of ${numStr(totalUsers)} active users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });
+  const rankingPopulation = d.rankingPopulation ?? totalUsers;
+  text(ctx, d.rank ? `#${d.rank}` : '#—', W - PAD - 24, PAD + 12, { size: 44, weight: 700, color: T.accentBright, align: 'right' });
+  text(ctx, `of ${numStr(rankingPopulation)} ranked users`, W - PAD - 24, PAD + 52, { size: 13, weight: 500, color: T.textMuted, align: 'right' });
 
   const topChannelLabel = topChannels.length > 0 ? topChannels[0].name : '—';
 
@@ -105,7 +108,7 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
     { label: 'Voice Hours', value: voiceValue },
     { label: 'Active Days', value: `${d.activeDays}/${d.totalDays}` },
     { label: 'Top Channel', value: topChannelLabel },
-    { label: 'Ranking', value: `Top ${d.topPercent}%` },
+    { label: 'Ranking', value: d.topPercent > 0 ? `Top ${d.topPercent}%` : '—' },
   ];
   for (let i = 0; i < stats.length; i++) {
     statCard(ctx, i, stats[i].label, stats[i].value, stats[i].color);
@@ -218,9 +221,12 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
   const fullW = bl.w + GAP + br.w;
   panelBg(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
   panelClip(ctx, { x: bl.x, y: bl.y, w: fullW, h: bl.h });
-  panelHeader(ctx, { x: bl.x, y: bl.y, w: fullW }, 'Top Channels', `${Math.min(topChannels.length, 6)} channels`);
-
   const displayChannels = topChannels.slice(0, 6);
+  const channelsSubtitle = displayChannels.length === 0 && d.channelsTrackingSince
+    ? `tracking since ${d.channelsTrackingSince}`
+    : `${Math.min(topChannels.length, 6)} channels`;
+  panelHeader(ctx, { x: bl.x, y: bl.y, w: fullW }, 'Top Channels', channelsSubtitle);
+
   const maxCh = displayChannels[0]?.messages || 1;
   const chCols = 2;
   const chColW = (fullW - GAP) / chCols;

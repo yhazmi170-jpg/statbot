@@ -29,6 +29,8 @@ model Guild {
   hourlyStats      GuildHourlyStats[]
   reportConfigs    ReportConfig[]
   userDailyStats   UserDailyStats[]
+  userChannelStats UserChannelStats[]
+  userHourlyStats  UserHourlyStats[]
   voiceSessions    VoiceSession[]
 
   @@index([ownerId])
@@ -40,6 +42,8 @@ model User {
   avatarUrl     String?
   createdAt     DateTime         @default(now())
   dailyStats    UserDailyStats[]
+  channelStats  UserChannelStats[]
+  hourlyStats   UserHourlyStats[]
   voiceSessions VoiceSession[]
 
   @@index([username])
@@ -51,6 +55,7 @@ model Channel {
   type      String   @default("text")
   guildId   String
   createdAt DateTime @default(now())
+  userStats UserChannelStats[]
 
   @@index([guildId])
   @@index([name])
@@ -119,6 +124,40 @@ model ChannelStats {
   @@index([guildId, channelId, date])
   @@index([guildId, date])
   @@index([channelId, date])
+}
+
+model UserChannelStats {
+  id        String   @id @default(cuid())
+  guildId   String
+  userId    String
+  channelId String
+  date      DateTime
+  messages  Int      @default(0)
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, userId, channelId, date])
+  @@index([guildId, userId, date])
+  @@index([guildId, channelId, date])
+  @@index([guildId, date])
+  @@index([userId, date])
+}
+
+model UserHourlyStats {
+  id       String   @id @default(cuid())
+  guildId  String
+  userId   String
+  date     DateTime
+  hour     Int
+  messages Int      @default(0)
+  guild    Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, userId, date, hour])
+  @@index([guildId, userId, date])
+  @@index([guildId, date])
+  @@index([userId, date])
 }
 
 model VoiceSession {
