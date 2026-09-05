@@ -2,7 +2,7 @@ import { Guild } from 'discord.js';
 import { prisma, log } from '../database/index.js';
 import { LEGACY_USERS, LEGACY_CHANNELS } from '../legacy-statbot.js';
 
-export const IMPORT_KEY = 'legacy-statbot-marlboro-v2';
+export const IMPORT_KEY = 'legacy-statbot-marlboro-v3';
 
 export interface ImportResult {
   usersImported: number;

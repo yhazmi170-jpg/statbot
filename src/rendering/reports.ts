@@ -55,7 +55,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1, rankColor,
       label: u.userId,
-      value: numStr(u.messages), barPct: pct,
+      value: numStr(u.messages),
       isLast: i === Math.min(d.topUsers.length, 10) - 1,
     });
   }
@@ -75,7 +75,7 @@ export async function renderReport(d: ReportData): Promise<Buffer> {
     rowItem(ctx, bl.x, ry, bl.w, chRowH, {
       rank: i + 1, rankColor,
       label: ch.name,
-      value: numStr(ch.messages), barPct: pct,
+      value: numStr(ch.messages),
       isLast: i === Math.min(d.topChannels.length, 10) - 1,
     });
   }

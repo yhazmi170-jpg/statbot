@@ -89,16 +89,24 @@ registerCommand({
   execute: async ({ msg, args }) => {
     const { period } = parsePeriodArg(args);
     const days = period ? parsePeriod(period).days : 14;
+    
+    // Get public channel IDs first
+    const publicChannelIds = msg.guild!.channels.cache
+      .filter(c => c.isTextBased() && c.permissionsFor(msg.guild!.roles.everyone)?.has('ViewChannel'))
+      .map(c => c.id);
+    
     const [guildStats, hourlyByDay, peakHours] = await Promise.all([
       queries.getServerStats(msg.guild!.id, undefined, period),
       queries.getActivityHeatmap(msg.guild!.id, 7),
       queries.getPeakHours(msg.guild!.id, days),
     ]);
-    const resolvedChannels = guildStats.topChannels.map(c => ({
-      name: resolveChannelName(msg.guild!, c.channelId),
-      messages: c.messages,
-      voiceMs: 0,
-    }));
+    const resolvedChannels = guildStats.topChannels
+      .filter(c => publicChannelIds.includes(c.channelId))
+      .map(c => ({
+        name: resolveChannelName(msg.guild!, c.channelId),
+        messages: c.messages,
+        voiceMs: 0,
+      }));
     const resolvedUsers = await Promise.all(guildStats.topUsers.map(async u => ({
       userId: await resolveUserName(msg.guild!, u.userId),
       messages: u.messages,
@@ -139,6 +147,10 @@ registerCommand({
     const totalJoins = growth.reduce((s, g) => s + g.joins, 0);
     const totalLeaves = growth.reduce((s, g) => s + g.leaves, 0);
 
+    const publicChannelIds = g.channels.cache
+      .filter(c => c.isTextBased() && c.permissionsFor(g.roles.everyone)?.has('ViewChannel'))
+      .map(c => c.id);
+    
     const buf = await renderServerOverview({
       guild: {
         name: g.name, memberCount: g.memberCount, channelCount: g.channels.cache.size,
@@ -155,10 +167,12 @@ registerCommand({
       peakDay,
       joins: totalJoins,
       leaves: totalLeaves,
-      topChannels: stats.topChannels.map(c => ({
-        channelId: c.channelId,
-        messages: c.messages,
-      })),
+      topChannels: stats.topChannels
+        .filter(c => publicChannelIds.includes(c.channelId))
+        .map(c => ({
+          channelId: c.channelId,
+          messages: c.messages,
+        })),
       topUsers: stats.topUsers.map(u => ({
         userId: u.userId,
         messages: u.messages,
@@ -250,7 +264,7 @@ registerCommand({
     const buf = await renderUserStats({
       user: { username: displayName, avatarUrl },
       guildName: msg.guild!.name,
-      rank, totalMembers: msg.guild!.memberCount,
+      rank, totalMembers: allUsers.length,
       totalMessages: combinedMessages, totalVoiceMs: combinedVoiceMs,
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
       totalDays: days, topChannels: resolvedChannels,
@@ -359,7 +373,7 @@ registerCommand({
         avatarUrl 
       },
       guildName: msg.guild!.name,
-      rank, totalMembers: msg.guild!.memberCount,
+      rank, totalMembers: allUsers.length,
       totalMessages: combinedMessages, totalVoiceMs: combinedVoiceMs,
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
       totalDays: days, topChannels: resolvedChannels,

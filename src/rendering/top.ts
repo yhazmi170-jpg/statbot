@@ -31,7 +31,7 @@ export async function renderTopUsers(guildName: string, period: string, users: R
     rowItem(ctx, tl.x, ry, tl.w, rowH, {
       rank: i + 1, rankColor,
       label: u.userId,
-      value: numStr(u.messages), barPct: pct,
+      value: numStr(u.messages),
       isLast: i === Math.min(users.length, 14) - 1,
     });
   }

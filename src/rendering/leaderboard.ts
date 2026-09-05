@@ -47,7 +47,6 @@ export async function renderLeaderboard(d: LeaderboardData): Promise<Buffer> {
       rank: i + 1, rankColor,
       label: u.userId,
       value: d.metric === 'voice' ? durStr(val) : numStr(val),
-      barPct: pct,
       isLast: i === Math.min(d.users.length, 14) - 1,
       member,
     });

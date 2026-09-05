@@ -98,12 +98,11 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
     const u = d.topUsers[i];
     const pct = maxMsg > 0 ? u.messages / maxMsg : 0;
     const rankColor = i === 0 ? T.accentBright : i === 1 ? T.textSecondary : i === 2 ? T.textMuted : T.textDim;
-    rowItem(ctx, tr.x, ry, tr.w, userRowH, {
+rowItem(ctx, tr.x, ry, tr.w, userRowH, {
       rank: i + 1,
       rankColor,
       label: u.userId,
       value: numStr(u.messages),
-      barPct: pct,
       isLast: i === Math.min(d.topUsers.length, 12) - 1,
     });
   }
@@ -125,7 +124,6 @@ export async function renderServerStats(d: Data): Promise<Buffer> {
       rankColor,
       label: ch.name,
       value: numStr(ch.messages),
-      barPct: pct,
       isLast: i === Math.min(topChannels.length, 12) - 1,
     });
   }

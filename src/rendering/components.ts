@@ -210,7 +210,7 @@ function fitTextWidth(ctx: any, str: string, maxWidth: number): string {
 
 export function rowItem(ctx: any, x: number, y: number, w: number, h: number, opts: {
   rank?: number; rankColor?: string; label: string; value: string;
-  barPct?: number; isLast?: boolean;
+  isLast?: boolean;
   member?: { displayName?: string; globalName?: string; username: string };
 }) {
   // Alternating row background
@@ -243,14 +243,6 @@ export function rowItem(ctx: any, x: number, y: number, w: number, h: number, op
   fitText(ctx, displayLabel, nameX, y + h / 2 - 10, maxLabelW, { size: 16, weight: 500, color: T.text });
 
   text(ctx, opts.value, x + w - 16, y + h / 2 - 10, { size: 16, weight: 700, color: T.accentBright, align: 'right' });
-
-  if (opts.barPct !== undefined && opts.barPct > 0) {
-    const barX = nameX;
-    const barW = w - nameX - 16 - 100;
-    const barY = y + h / 2 + 10;
-    fillRect(ctx, barX, barY, barW, 4, '#1e1e24', 2);
-    fillRect(ctx, barX, barY, Math.max(barW * opts.barPct, 4), 4, T.accent, 2);
-  }
 }
 
 // ─── LEADERBOARD (with styled rows & empty states) ─────
@@ -283,7 +275,6 @@ export function leaderboard(ctx: any, x: number, y: number, w: number, h: number
       rank: i + 1, rankColor,
       label: item.name,
       value: item.value.toLocaleString(),
-      barPct: pct,
       isLast: i === Math.min(items.length, maxItems) - 1,
     });
   }

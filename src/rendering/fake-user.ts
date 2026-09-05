@@ -59,7 +59,7 @@ export async function renderFakeUserStats(d: FakeUserData): Promise<Buffer> {
     rowItem(ctx, bl.x, ry, fullW, chRowH, {
       rank: i + 1, rankColor,
       label: ch.channelId,
-      value: numStr(ch.messages), barPct: pct,
+      value: numStr(ch.messages),
       isLast: i === Math.min(d.topChannels.length, 8) - 1,
     });
   }

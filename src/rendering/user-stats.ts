@@ -241,7 +241,6 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
         rankColor,
         label: ch.name,
         value: numStr(ch.messages),
-        barPct: pct,
         isLast: ri === chPerCol - 1,
       });
     }

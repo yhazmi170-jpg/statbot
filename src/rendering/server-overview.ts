@@ -110,7 +110,6 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
       rankColor,
       label: u.userId,
       value: numStr(u.messages),
-      barPct: pct,
       isLast: i === Math.min(d.topUsers.length, 12) - 1,
     });
   }
@@ -135,7 +134,6 @@ export async function renderServerOverview(d: Data): Promise<Buffer> {
       rankColor,
       label: ch.name,
       value: numStr(ch.messages),
-      barPct: pct,
       isLast: i === Math.min(topChannels.length, 12) - 1,
     });
   }

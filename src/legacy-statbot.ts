@@ -1,9 +1,9 @@
 // Legacy StatBot data imported from /marlboro social
 // Source: 14-day snapshot from previous StatBot installation
-// Import key: legacy-statbot-marlboro-v2
+// Import key: legacy-statbot-marlboro-v3
 // Voice stored as seconds (hours * 3600)
 
-export const IMPORT_KEY = 'legacy-statbot-marlboro-v2';
+export const IMPORT_KEY = 'legacy-statbot-marlboro-v3';
 
 export interface LegacyUserRecord {
   discordUserId: string | null;
