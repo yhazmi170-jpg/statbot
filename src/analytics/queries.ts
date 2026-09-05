@@ -315,11 +315,17 @@ export async function getTopVoiceWithLegacy(guildId: string, days?: number, peri
 }
 
 // Top channels leaderboard
-export async function getTopChannels(guildId: string, days?: number, period?: string, limit: number = 15) {
+export async function getTopChannels(guildId: string, days?: number, period?: string, limit: number = 15, allowedChannelIds?: string[]) {
   const { since } = resolvePeriod(days, period);
+  
+  const where: any = { guildId, date: { gte: since } };
+  if (allowedChannelIds && allowedChannelIds.length > 0) {
+    where.channelId = { in: allowedChannelIds };
+  }
+  
   const stats = await prisma.channelStats.groupBy({
     by: ['channelId'],
-    where: { guildId, date: { gte: since } },
+    where,
     _sum: { messages: true },
     _count: true,
     orderBy: { _sum: { messages: 'desc' } },
@@ -334,8 +340,8 @@ export async function getTopChannels(guildId: string, days?: number, period?: st
 }
 
 // Top channels leaderboard with legacy support
-export async function getTopChannelsWithLegacy(guildId: string, days?: number, period?: string, limit: number = 15, includeLegacy: boolean = false) {
-  const liveStats = await getTopChannels(guildId, days, period, limit);
+export async function getTopChannelsWithLegacy(guildId: string, days?: number, period?: string, limit: number = 15, includeLegacy: boolean = false, allowedChannelIds?: string[]) {
+  const liveStats = await getTopChannels(guildId, days, period, limit, allowedChannelIds);
   
   if (!includeLegacy) return liveStats;
   
@@ -735,14 +741,19 @@ export async function getUserWeekdayActivity(guildId: string, userId: string, da
 }
 
 // Voice channel leaderboard (top channels by voice time)
-export async function getTopVoiceChannels(guildId: string, days: number = 30, limit: number = 10) {
+export async function getTopVoiceChannels(guildId: string, days: number = 30, limit: number = 10, allowedChannelIds?: string[]) {
   const since = new Date();
   since.setDate(since.getDate() - days);
   since.setHours(0, 0, 0, 0);
 
+  const where: any = { guildId, startedAt: { gte: since } };
+  if (allowedChannelIds && allowedChannelIds.length > 0) {
+    where.channelId = { in: allowedChannelIds };
+  }
+
   const stats = await prisma.voiceSession.groupBy({
     by: ['channelId'],
-    where: { guildId, startedAt: { gte: since } },
+    where,
     _sum: { durationMs: true },
     _count: { id: true },
     orderBy: { _sum: { durationMs: 'desc' } },

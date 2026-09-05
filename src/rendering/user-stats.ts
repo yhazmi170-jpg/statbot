@@ -96,13 +96,9 @@ export async function renderUserStats(d: Data): Promise<Buffer> {
 
   const topChannelLabel = topChannels.length > 0 ? topChannels[0].name : '—';
 
-  const hasLegacy = (d.legacyMessages || 0) > 0 || (d.legacyVoiceMs || 0) > 0;
-  const msgValue = hasLegacy
-    ? `${numStr(d.totalMessages)} (${numStr(d.liveMessages || 0)} live + ${numStr(d.legacyMessages || 0)} legacy)`
-    : numStr(d.totalMessages);
-  const voiceValue = hasLegacy
-    ? `${(d.totalVoiceMs / 3600000).toFixed(1)}h (${((d.liveVoiceMs || 0) / 3600000).toFixed(1)} live + ${((d.legacyVoiceMs || 0) / 3600000).toFixed(1)} legacy)`
-    : (d.totalVoiceMs / 3600000).toFixed(1) + 'h';
+  // Clean totals - no live/legacy breakdown in UI
+  const msgValue = numStr(d.totalMessages);
+  const voiceValue = (d.totalVoiceMs / 3600000).toFixed(1) + 'h';
 
   const stats = [
     { label: 'Messages', value: msgValue, color: T.accentBright },

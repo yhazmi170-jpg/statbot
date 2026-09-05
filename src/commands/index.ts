@@ -204,7 +204,10 @@ registerCommand({
 
     const noData = combinedMessages === 0 && combinedVoiceMs === 0;
     const rank = noData ? allUsers.length + 1 : (allUsers.findIndex((u: any) => u.userId === targetUser.id) + 1 || allUsers.length);
+    // Percentile = percentage of users BELOW this user
     const percentile = allUsers.length > 0 ? Math.round(((allUsers.length - rank) / allUsers.length) * 100) : 0;
+    // Top X% = percentage of users at or above this rank
+    const topPercent = allUsers.length > 0 ? Math.max(1, Math.round((rank / allUsers.length) * 100)) : 0;
 
     const weekdayMsgs = Array(7).fill(0);
     for (const d of stats.dailyBreakdown) {
@@ -252,7 +255,7 @@ registerCommand({
       voiceSessions: stats.voiceSessions, activeDays: stats.dailyBreakdown.filter((d: any) => d.messages > 0).length,
       totalDays: days, topChannels: resolvedChannels,
       dailyMessages: stats.dailyBreakdown.map((d: any) => d.messages),
-      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile, topChannelName: resolvedChannels[0]?.name || '—',
+      weekdayMessages: weekdayMsgs, hourlyMessages: hourlyMsgs, percentile: topPercent, topChannelName: resolvedChannels[0]?.name || '—',
       msgsThisWeek: 0, msgsThisMonth: stats.totalMessages,
       voiceThisWeek: 0, voiceThisMonth: stats.totalVoiceMs,
       legacyMessages: legacyMsgs, legacyVoiceMs: legacyVoiceSec * 1000,
@@ -518,36 +521,46 @@ registerCommand({
       });
       await msg.reply({ files: [new AttachmentBuilder(buf, { name: 'top-activity.png' })] });
     } else if (mode === 'channels') {
-      const channels = await queries.getTopChannels(msg.guild!.id, days, period, 10);
-      const filtered = await queries.filterPublicChannels(msg.guild!, channels);
+      // Get public channel IDs first
+      const publicChannelIds = msg.guild!.channels.cache
+        .filter(c => c.isTextBased() && c.permissionsFor(msg.guild!.roles.everyone)?.has('ViewChannel'))
+        .map(c => c.id);
+      
+      const channels = await queries.getTopChannels(msg.guild!.id, days, period, 10, publicChannelIds);
       const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
-      const lines = filtered.map((c, i) => {
+      const lines = channels.map((c, i) => {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-        const name = c.channelName || `<#${c.channelId}>`;
+        const chObj = msg.guild!.channels.cache.get(c.channelId);
+        const name = chObj ? `#${chObj.name}` : `#deleted-channel`;
         return `${medal} ${name} — ${c.messages.toLocaleString()} msgs`;
       });
       await msg.reply({
         embeds: [{
           title: `📊 Top Channels — ${periodLabel}`,
-          description: lines.join('\n') || 'No data yet.',
+          description: lines.join('\n') || 'No public channel activity recorded.',
           color: 0x8b0000,
           footer: { text: 'StatBot' },
         }],
       });
     } else if (mode === 'voicechannels') {
-      const voiceChannels = await queries.getTopVoiceChannels(msg.guild!.id, days, 10);
-      const filtered = await queries.filterPublicVoiceChannels(msg.guild!, voiceChannels);
+      // Get public voice channel IDs first
+      const publicVoiceChannelIds = msg.guild!.channels.cache
+        .filter(c => c.isVoiceBased() && c.permissionsFor(msg.guild!.roles.everyone)?.has('ViewChannel'))
+        .map(c => c.id);
+      
+      const voiceChannels = await queries.getTopVoiceChannels(msg.guild!.id, days, 10, publicVoiceChannelIds);
       const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
-      const lines = filtered.map((c, i) => {
+      const lines = voiceChannels.map((c, i) => {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-        const name = c.channelName || `<#${c.channelId}>`;
+        const chObj = msg.guild!.channels.cache.get(c.channelId);
+        const name = chObj ? `#${chObj.name}` : `#deleted-channel`;
         const hours = (c.totalMs / 3600000).toFixed(1);
         return `${medal} ${name} — ${hours}h`;
       });
       await msg.reply({
         embeds: [{
           title: `🔊 Top Voice Channels — ${periodLabel}`,
-          description: lines.join('\n') || 'No data yet.',
+          description: lines.join('\n') || 'No public voice channel activity recorded.',
           color: 0x8b0000,
           footer: { text: 'StatBot' },
         }],
@@ -578,16 +591,24 @@ registerCommand({
   execute: async ({ msg, args }) => {
     const { period, days: d } = parsePeriodArg(args);
     const days = d || 14;
-    const ch = await queries.getTopChannels(msg.guild!.id, days, period, 10);
+    
+    // Get public channel IDs first
+    const publicChannelIds = msg.guild!.channels.cache
+      .filter(c => c.isTextBased() && c.permissionsFor(msg.guild!.roles.everyone)?.has('ViewChannel'))
+      .map(c => c.id);
+    
+    const ch = await queries.getTopChannels(msg.guild!.id, days, period, 10, publicChannelIds);
     const periodLabel = period ? parsePeriod(period).label : `Last ${days} Days`;
     const lines = ch.map((c, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-      return `${medal} <#${c.channelId}> — ${c.messages.toLocaleString()} msgs`;
+      const chObj = msg.guild!.channels.cache.get(c.channelId);
+      const name = chObj ? `#${chObj.name}` : `#deleted-channel`;
+      return `${medal} ${name} — ${c.messages.toLocaleString()} msgs`;
     });
     await msg.reply({
       embeds: [{
         title: `📊 Top Channels — ${periodLabel}`,
-        description: lines.join('\n') || 'No data yet.',
+        description: lines.join('\n') || 'No public channel activity recorded.',
         color: 0x8b0000,
         footer: { text: 'StatBot' },
       }],
