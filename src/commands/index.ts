@@ -83,7 +83,7 @@ registerCommand({
   name: 'stats',
   description: 'Server statistics overview',
   category: 'Analytics',
-  aliases: ['svstats', 'top'],
+  aliases: ['svstats'],
   execute: async ({ msg, args }) => {
     const { period } = parsePeriodArg(args);
     const days = period ? parsePeriod(period).days : 14;
